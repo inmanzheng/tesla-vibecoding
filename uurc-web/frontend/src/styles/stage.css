@@ -57,6 +57,21 @@
   object-fit: contain;
 }
 
+.stage-gesture-probe {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  left: 10px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(10, 10, 10, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
 .stage-badge {
   position: absolute;
   left: 12px;

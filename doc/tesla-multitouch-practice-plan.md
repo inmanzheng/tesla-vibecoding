@@ -28,15 +28,15 @@
 
 ---
 
-## 2. 手势规格（v1 必做 / 后做）
+## 2. 手势规格（全部进 v1）
 
 | 车机动作 | 判定 | 远端 | 优先级 |
 |---|---|---|---|
 | 单指点/拖 | 并发 1 指，分类窗结束或位移超过 slop | 现有 `sendMouseMove` + `mousePress/Release` | v1 |
 | 双指同向滑 | 并发 2 指，质心位移 | `sendMouseScroll({ deltaX, deltaY })` | v1 |
+| 双指捏合 | 两指距离变化主导（\|Δ距离\| > 质心位移） | `Ctrl` + 滚轮 | v1 |
 | 三/四指左右滑 | 并发 ≥3，水平主导且超过阈值，**整段只发一次** | `mac-prev-desktop` / `mac-next-desktop` | v1 |
-| 双指捏合 | 两指距离变化主导 | `Ctrl` 按住 + 滚轮（后做） | P1 |
-| 三指上滑 | ≥3 指、向上主导 | `mac-mission-control` | P1 |
+| 三指上滑 | ≥3 指、向上主导 | `mac-mission-control` | v1 |
 
 菜单里的「上一/下一桌面 / 调度中心」始终可用，作为 3/4 指被车机吃掉时的降级。
 
@@ -53,7 +53,8 @@
        │  产出 Command[]
        ├─ { type: "mouseMove" | "mousePress" | "mouseRelease", ... }
        ├─ { type: "scroll", deltaX, deltaY }
-       └─ { type: "shortcut", id: "mac-prev-desktop" | "mac-next-desktop" }
+       ├─ { type: "zoom", deltaY }
+       └─ { type: "shortcut", id: "mac-prev-desktop" | "mac-next-desktop" | "mac-mission-control" }
        │
        ▼
   useRemoteControlController   ← 只改指针四函数，用 Map 替掉 activePointerId
@@ -228,7 +229,8 @@ for (const cmd of gesture.current.pointerMove(sample)) {
 
 - [ ] Mac 浏览器里：单指点、拖与现在一致，无残按下
 - [ ] 触控板/触摸屏：双指滑，远端页面滚动
-- [ ] 能模拟 3 指时：右滑下一桌面、左滑上一桌面，一次滑只切一次
+- [ ] 能模拟 3 指时：右滑下一桌面、左滑上一桌面、上滑调度中心，一次滑只切一次
+- [ ] 双指捏合：远端走 Ctrl+滚轮缩放
 - [ ] 菜单切桌面仍可用
 - [ ] 车上探针记下 `max`；`max<3` 不挡发版
 

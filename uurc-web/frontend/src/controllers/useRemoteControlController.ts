@@ -63,6 +63,12 @@ import { pickControllableDesktop } from "../devices/deviceSummary.js";
 import { BrowserRemoteSession, type BrowserRemoteSessionState, type BrowserRemoteVideoElementSample } from "../remote/browserRemoteSession.js";
 import { remoteShortcutGroupTitleForPlatform, sendRemoteShortcut, type RemoteShortcut } from "../remote/remoteShortcuts.js";
 import {
+  createStageGestureRecognizer,
+  type GestureCommand,
+  type GestureSnapshot,
+  type PointerSample,
+} from "../remote/stageGestureRecognizer.js";
+import {
   createAppControlId,
   createIdleBrowserRemoteState,
   createSingleTrackMediaStream,
@@ -94,6 +100,7 @@ import {
 import { useAutoLoadDevices } from "./useAutoLoadDevices.js";
 
 const REMOTE_ASSISTANCE_DEFAULT_TARGET_PLATFORM = 1;
+const MAC_CONTROL_LEFT_KEY = 113;
 
 // 需要“按住保持”的修饰键(用于组合键);其余键采用瞬时一击。event.key 取值见 KeyboardEvent.key 规范。
 const HOLD_MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "AltGraph"]);
@@ -180,7 +187,7 @@ export function useRemoteControlController() {
   const remoteStageFrameRef = useRef<HTMLDivElement | null>(null);
   const autoConnectAttemptedDeviceRef = useRef<string>("");
   const controlChannelOpenedRef = useRef(false);
-  const activePointerId = useRef<number | null>(null);
+  const gestureRecognizer = useRef(createStageGestureRecognizer());
   const navigate = useNavigate();
   const controlRouteMatch = useMatch("/devices/:deviceId/control");
   const routeSelectedDeviceId = controlRouteMatch?.params.deviceId ?? "";
@@ -625,9 +632,9 @@ export function useRemoteControlController() {
   }
 
   function resetBrowserRemoteSession() {
+    dispatchGestureCommands(gestureRecognizer.current.reset());
     const closedState = browserRemoteSession.current?.close();
     browserRemoteSession.current = null;
-    activePointerId.current = null;
     setInputControlEnabled(false);
     setRemoteVideoStreams([]);
     setRemoteVideoSamplesById({});
@@ -847,8 +854,58 @@ export function useRemoteControlController() {
     }
   }
 
+  function dispatchStagePointer(kind: "down" | "move" | "up" | "cancel", event: PointerEvent<HTMLDivElement>) {
+    const sample = toPointerSample(event);
+    const commands =
+      kind === "down"
+        ? gestureRecognizer.current.pointerDown(sample)
+        : kind === "move"
+          ? gestureRecognizer.current.pointerMove(sample)
+          : kind === "up"
+            ? gestureRecognizer.current.pointerUp(sample)
+            : gestureRecognizer.current.pointerCancel(sample);
+    dispatchGestureCommands(commands, event);
+    writeGestureProbe(event.currentTarget, gestureRecognizer.current.snapshot());
+  }
+
+  function dispatchGestureCommands(commands: readonly GestureCommand[], event?: PointerEvent<HTMLDivElement>) {
+    const session = browserRemoteSession.current;
+    if (!session || commands.length === 0) return;
+    try {
+      for (const command of commands) {
+        if (command.type === "mouseMove") {
+          if (!event) continue;
+          session.sendMouseMove(toRemoteMousePosition(event));
+          continue;
+        }
+        if (command.type === "mousePress") {
+          session.sendMouseButton({ action: "mousePress", button: toRemoteMouseButton(command.button) });
+          continue;
+        }
+        if (command.type === "mouseRelease") {
+          session.sendMouseButton({ action: "mouseRelease", button: toRemoteMouseButton(command.button) });
+          continue;
+        }
+        if (command.type === "scroll") {
+          session.sendMouseScroll({ deltaX: command.deltaX, deltaY: command.deltaY });
+          continue;
+        }
+        if (command.type === "zoom") {
+          session.sendKeyboardInput({ action: "keyboardPress", value: MAC_CONTROL_LEFT_KEY });
+          session.sendMouseScroll({ deltaX: 0, deltaY: command.deltaY });
+          session.sendKeyboardInput({ action: "keyboardRelease", value: MAC_CONTROL_LEFT_KEY });
+          continue;
+        }
+        sendRemoteShortcut(session, command.id);
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
   function handleToggleInputControl() {
     if (inputControlActive) {
+      dispatchGestureCommands(gestureRecognizer.current.reset());
       setInputControlEnabled(false);
       return;
     }
@@ -861,57 +918,30 @@ export function useRemoteControlController() {
     if (!inputControlActive || !browserRemoteSession.current) return;
     event.preventDefault();
     event.currentTarget.focus();
-    activePointerId.current = event.pointerId;
     if (typeof event.currentTarget.setPointerCapture === "function") {
       event.currentTarget.setPointerCapture(event.pointerId);
     }
-    try {
-      // 输入热路径不主动刷新 React 状态：鼠标/键盘操作不改变任何可见 UI，
-      // 而 getState() 每次返回新引用会强制整页重渲染，挤占主线程并拖慢控制心跳。
-      // 通道开/关等真正的状态变化由 BrowserRemoteSession 内部在变化时单独推送。
-      browserRemoteSession.current.sendMouseMove(toRemoteMousePosition(event));
-      browserRemoteSession.current.sendMouseButton({ action: "mousePress", button: toRemoteMouseButton(event.button) });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    }
+    dispatchStagePointer("down", event);
   }
 
   function handleRemoteStagePointerMove(event: PointerEvent<HTMLDivElement>) {
     if (!inputControlActive || !browserRemoteSession.current) return;
-    if (activePointerId.current !== null && activePointerId.current !== event.pointerId) return;
     event.preventDefault();
-    try {
-      browserRemoteSession.current.sendMouseMove(toRemoteMousePosition(event));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    }
+    dispatchStagePointer("move", event);
   }
 
   function handleRemoteStagePointerUp(event: PointerEvent<HTMLDivElement>) {
     if (!inputControlActive || !browserRemoteSession.current) return;
-    if (activePointerId.current !== null && activePointerId.current !== event.pointerId) return;
     event.preventDefault();
-    activePointerId.current = null;
     if (typeof event.currentTarget.releasePointerCapture === "function" && event.currentTarget.hasPointerCapture?.(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    try {
-      browserRemoteSession.current.sendMouseMove(toRemoteMousePosition(event));
-      browserRemoteSession.current.sendMouseButton({ action: "mouseRelease", button: toRemoteMouseButton(event.button) });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    }
+    dispatchStagePointer("up", event);
   }
 
   function handleRemoteStagePointerCancel(event: PointerEvent<HTMLDivElement>) {
-    if (activePointerId.current !== event.pointerId) return;
-    activePointerId.current = null;
     if (!inputControlActive || !browserRemoteSession.current) return;
-    try {
-      browserRemoteSession.current.sendMouseButton({ action: "mouseRelease", button: toRemoteMouseButton(event.button) });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    }
+    dispatchStagePointer("cancel", event);
   }
 
   function handleRemoteStageWheel(event: WheelEvent<HTMLDivElement>) {
@@ -970,7 +1000,7 @@ export function useRemoteControlController() {
   function handleRemoteStageBlur() {
     // 失焦时把按住的键鼠全部抬起：Alt+Tab、右键菜单、系统快捷键会吞掉 keyup/pointerup，
     // 否则会在被控端留下卡住的按键（右键卡死、Alt 卡死等）。
-    activePointerId.current = null;
+    dispatchGestureCommands(gestureRecognizer.current.reset());
     browserRemoteSession.current?.releaseAllInputs();
   }
 
@@ -1276,6 +1306,12 @@ export function useRemoteControlController() {
   }, []);
 
   useEffect(() => {
+    if (inputControlActive) return;
+    const stage = remoteStageRef.current;
+    stage?.querySelector("[data-gesture-probe]")?.remove();
+  }, [inputControlActive]);
+
+  useEffect(() => {
     const stage = remoteStageRef.current;
     if (!stage || !inputControlActive) return;
     // React 的 onWheel 是被动监听，event.preventDefault() 无效，会导致整页跟随滚动；
@@ -1487,4 +1523,36 @@ export function useRemoteControlController() {
     deviceListPageProps,
     controlPageProps,
   };
+}
+
+function toPointerSample(event: PointerEvent<HTMLDivElement>): PointerSample {
+  return {
+    pointerId: event.pointerId,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    button: event.button,
+    timeStamp: event.timeStamp,
+  };
+}
+
+function isGestureProbeEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (new URLSearchParams(window.location.search).get("gestureProbe") === "1") return true;
+    return window.localStorage.getItem("uurcGestureProbe") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeGestureProbe(stage: HTMLDivElement, snapshot: GestureSnapshot) {
+  if (!isGestureProbeEnabled()) return;
+  let node = stage.querySelector<HTMLDivElement>("[data-gesture-probe]");
+  if (!node) {
+    node = document.createElement("div");
+    node.dataset.gestureProbe = "1";
+    node.className = "stage-gesture-probe";
+    stage.appendChild(node);
+  }
+  node.textContent = `fingers=${snapshot.count} max=${snapshot.maxCount} mode=${snapshot.mode} ids=${snapshot.ids.join(",")}`;
 }
