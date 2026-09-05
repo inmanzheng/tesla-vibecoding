@@ -1,0 +1,124 @@
+@media (max-width: 1180px) {
+  .device-home {
+    grid-template-areas:
+      "devices"
+      "account";
+    grid-template-columns: 1fr;
+  }
+
+  .account-drawer {
+    position: static;
+  }
+}
+
+@media (max-width: 780px) {
+  .app-shell,
+  .product-shell,
+  .control-shell,
+  .auth-product-shell {
+    width: min(100vw - 24px, 760px);
+    padding-top: 20px;
+  }
+
+  .topbar,
+  .product-topbar,
+  .control-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    display: flex;
+  }
+
+  .control-drawer-row,
+  .login-actions,
+  .device-home,
+  .remote-assistance-form {
+    grid-template-columns: 1fr;
+  }
+
+  .control-remote-stage {
+    height: clamp(320px, 58vh, 560px);
+  }
+
+  .control-command-bar {
+    width: 100%;
+    max-width: none;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: visible;
+    scrollbar-width: none;
+  }
+
+  .control-command-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .connection-recovery-strip {
+    flex-basis: 260px;
+    max-width: 260px;
+  }
+
+  .shortcut-menu-panel {
+    position: fixed;
+    top: 72px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+  }
+
+  .shortcut-menu-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .remote-input-row.compact {
+    flex-basis: 280px;
+    width: 280px;
+  }
+
+  .control-drawer-row {
+    margin-top: 8px;
+  }
+
+  .control-insights {
+    grid-template-columns: 1fr;
+  }
+
+  .quality-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .remote-input-row:not(.compact) {
+    grid-template-columns: 1fr;
+  }
+
+  .control-stage-layout {
+    gap: 10px;
+  }
+
+  .button-row.three,
+  .account-actions,
+  .input-guard,
+  .identity-summary div,
+  .inline-fields,
+  .join-mode-control,
+  .segmented-control,
+  .readiness-steps,
+  .route-options,
+  .transport-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .identity-summary div {
+    display: block;
+  }
+
+  .identity-summary span {
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  h1 {
+    font-size: 24px;
+  }
+}

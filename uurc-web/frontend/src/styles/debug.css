@@ -1,0 +1,430 @@
+.debug-details {
+  margin-top: 10px;
+}
+
+.transport-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.live-debug-summary,
+.route-summary {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.live-debug-summary header,
+.route-summary header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.live-debug-summary header div,
+.route-summary header div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.live-debug-summary span,
+.route-summary header span {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.live-debug-summary strong,
+.route-summary header strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.live-debug-summary code,
+.route-summary header code {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.live-debug-summary p,
+.route-copy {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.live-debug-receiving {
+  background: var(--success-soft);
+  border-color: #bbf7d0;
+}
+
+.live-debug-decode_stalled,
+.live-debug-transport_stalled {
+  background: var(--warn-soft);
+  border-color: #fde68a;
+}
+
+.route-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.route-option {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 10px 12px;
+}
+
+.route-option.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.route-option strong,
+.route-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.route-option strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.route-option span {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.empty-debug-log {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.debug-event-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.debug-event-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 8px 10px;
+  min-width: 0;
+}
+
+.debug-event-list span {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.debug-event-list strong {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.debug-event-list code {
+  color: var(--text-muted);
+  font-size: 11px;
+  background: var(--surface-2);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.debug-event-list pre {
+  grid-column: 1 / -1;
+  max-height: 180px;
+  overflow: auto;
+  margin: 4px 0 0;
+  border-radius: var(--radius);
+  background: #111111;
+  color: #e5e5e5;
+  padding: 10px;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+}
+
+.transport-refresh {
+  margin-bottom: 10px;
+}
+
+.transport-select {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.transport-select span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.transport-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.transport-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.transport-item p {
+  margin: 5px 0 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.transport-item span {
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.readiness-strip {
+  margin-top: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 12px;
+}
+
+.readiness-strip header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.readiness-strip header div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.readiness-strip header span {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.readiness-strip header strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.readiness-strip header code {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  background: var(--surface-2);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.readiness-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.readiness-step {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  text-align: center;
+  overflow-wrap: anywhere;
+  font-size: 11.5px;
+  background: var(--surface);
+}
+
+.readiness-step-ok {
+  color: var(--success);
+  border-color: #bbf7d0;
+}
+
+.readiness-step-wait {
+  color: var(--text-muted);
+}
+
+.readiness-step-blocked {
+  color: var(--danger);
+  border-color: #fecaca;
+}
+
+.readiness-terminal {
+  margin: 8px 0 0;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+  font-size: 11.5px;
+}
+
+.transport-details {
+  margin: 10px 0 0;
+}
+
+.advanced-actions,
+.diagnostics-details,
+.debug-details,
+.debug-events-details,
+.identity-details,
+.login-import,
+.session-details,
+.protocol-details {
+  margin-top: 10px;
+}
+
+.advanced-actions summary,
+.diagnostics-details summary,
+.debug-details summary,
+.debug-events-details summary,
+.identity-details summary,
+.login-import summary,
+.session-details summary,
+.protocol-details summary {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12.5px;
+  transition: background 0.12s, color 0.12s;
+}
+
+.advanced-actions summary::-webkit-details-marker,
+.diagnostics-details summary::-webkit-details-marker,
+.debug-details summary::-webkit-details-marker,
+.debug-events-details summary::-webkit-details-marker,
+.identity-details summary::-webkit-details-marker,
+.login-import summary::-webkit-details-marker,
+.session-details summary::-webkit-details-marker,
+.protocol-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-actions summary::after,
+.diagnostics-details summary::after,
+.debug-details summary::after,
+.debug-events-details summary::after,
+.identity-details summary::after,
+.login-import summary::after,
+.session-details summary::after,
+.protocol-details summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  opacity: 0.72;
+  transform: rotate(45deg);
+  transition: transform 0.14s ease, opacity 0.14s ease;
+}
+
+.advanced-actions[open] summary::after,
+.diagnostics-details[open] summary::after,
+.debug-details[open] summary::after,
+.debug-events-details[open] summary::after,
+.identity-details[open] summary::after,
+.login-import[open] summary::after,
+.session-details[open] summary::after,
+.protocol-details[open] summary::after {
+  transform: rotate(225deg);
+}
+
+.advanced-actions summary:hover,
+.diagnostics-details summary:hover,
+.debug-details summary:hover,
+.debug-events-details summary:hover,
+.identity-details summary:hover,
+.login-import summary:hover,
+.session-details summary:hover,
+.protocol-details summary:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.advanced-actions summary:hover::after,
+.diagnostics-details summary:hover::after,
+.debug-details summary:hover::after,
+.debug-events-details summary:hover::after,
+.identity-details summary:hover::after,
+.login-import summary:hover::after,
+.session-details summary:hover::after,
+.protocol-details summary:hover::after {
+  opacity: 1;
+}
+
+.advanced-actions[open],
+.diagnostics-details[open],
+.debug-details[open],
+.debug-events-details[open],
+.identity-details[open],
+.session-details[open] {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 8px;
+  background: var(--surface-2);
+}
+
+.advanced-actions[open] summary,
+.diagnostics-details[open] summary,
+.debug-details[open] summary,
+.debug-events-details[open] summary,
+.identity-details[open] summary,
+.login-import[open] summary,
+.session-details[open] summary {
+  margin-bottom: 10px;
+}

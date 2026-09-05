@@ -1,0 +1,15 @@
+artifacts/
+.secrets/
+.env
+.env.*
+!.env.example
+state.json
+*.state.json
+node_modules/
+**/dist/
+**/dist-ts/
+*.tsbuildinfo
+.wrangler/
+*.log
+.DS_Store
+.analysis/

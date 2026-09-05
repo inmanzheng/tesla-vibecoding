@@ -1,0 +1,26 @@
+# 参考模板（deploy-vps.sh / switch-domain.sh 会自动生成真正的 /etc/caddy/Caddyfile，无需手改本文件）
+# 注意 basicauth 语法是 `1111 $HASH`（用户名在前），不是 `/ $HASH`。
+#
+# 域名模式（推荐，车机 WebRTC 需要受信 HTTPS）：
+# desktop.example.com {
+#     tls you@example.com
+#     basicauth {
+#         1111 $2a$14$生成的哈希
+#     }
+#     reverse_proxy 127.0.0.1:8787
+# }
+# :80 {
+#     redir https://{host}{uri} 301
+# }
+#
+# 无域名模式（openssl 显式自签证书，车机需手动"接受风险继续"）：
+# :443 {
+#     tls /etc/caddy/cert.pem /etc/caddy/key.pem
+#     basicauth {
+#         1111 $2a$14$生成的哈希
+#     }
+#     reverse_proxy 127.0.0.1:8787
+# }
+# :80 {
+#     redir https://{host}{uri} 301
+# }

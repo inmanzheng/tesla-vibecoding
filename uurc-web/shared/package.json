@@ -1,0 +1,63 @@
+{
+  "name": "@uurc/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./streamerProtocol": {
+      "types": "./dist/streamerProtocol.d.ts",
+      "default": "./dist/streamerProtocol.js"
+    },
+    "./authState": {
+      "types": "./dist/authState.d.ts",
+      "default": "./dist/authState.js"
+    },
+    "./constants": {
+      "types": "./dist/constants.d.ts",
+      "default": "./dist/constants.js"
+    },
+    "./loginFlow": {
+      "types": "./dist/loginFlow.d.ts",
+      "default": "./dist/loginFlow.js"
+    },
+    "./signalGatewayProtocol": {
+      "types": "./dist/signalGatewayProtocol.d.ts",
+      "default": "./dist/signalGatewayProtocol.js"
+    },
+    "./remoteBootstrap": {
+      "types": "./dist/remoteBootstrap.d.ts",
+      "default": "./dist/remoteBootstrap.js"
+    },
+    "./roomConfig": {
+      "types": "./dist/roomConfig.d.ts",
+      "default": "./dist/roomConfig.js"
+    },
+    "./runtimeProfile": {
+      "types": "./dist/runtimeProfile.d.ts",
+      "default": "./dist/runtimeProfile.js"
+    },
+    "./uuProxy": {
+      "types": "./dist/uuProxy.d.ts",
+      "default": "./dist/uuProxy.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch --preserveWatchOutput",
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "typescript": "^5.7.3",
+    "vitest": "^4.0.18"
+  }
+}
