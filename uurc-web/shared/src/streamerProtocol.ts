@@ -857,6 +857,9 @@ export interface BuildDefaultStreamerConnectOptionsBase64Input {
   cursorCapture?: boolean;
   localResolution?: StreamerScreenResolutionInput | null;
   virtualDisplayModes?: readonly StreamerVirtualDisplayModeInput[];
+  decoderWidth?: number;
+  decoderHeight?: number;
+  decoderFps?: number;
 }
 
 const protobufWireType = {
@@ -951,13 +954,21 @@ export function buildDefaultStreamerConnectOptionsBase64(input: BuildDefaultStre
     captureType: STREAMER_CAPTURE_TYPES.CT_DESKTOP,
     typeValue: STREAMER_DEFAULT_BROWSER_TYPE_VALUE,
     captureParams: {
-      fps: input.fps ?? STREAMER_FPS_VALUES.FPS_60,
-      videoQuality: input.videoQuality ?? STREAMER_VIDEO_QUALITY_VALUES.VideoQuality_HD,
+      fps: input.fps ?? STREAMER_FPS_VALUES.FPS_30,
+      videoQuality: input.videoQuality ?? STREAMER_VIDEO_QUALITY_VALUES.VideoQuality_General,
       cursorCapture: input.cursorCapture ?? true,
       chooseResolutionType: STREAMER_CHOOSE_RESOLUTION_TYPES.ChooseType_DEFAULT,
       localResolution: input.localResolution ?? STREAMER_DEFAULT_BROWSER_LOCAL_RESOLUTION,
     },
-    decoderCapList: [buildDefaultStreamerDecoderCap()],
+    decoderCapList: [
+      encodeStreamerDecoderCap({
+        fps: input.decoderFps ?? 30,
+        codecType: STREAMER_DECODER_CODEC_TYPES.CodecType_H264,
+        width: input.decoderWidth ?? 1920,
+        height: input.decoderHeight ?? 1080,
+        chromaFormat: STREAMER_DECODER_CHROMA_FORMATS.ChromaFormat_420,
+      }),
+    ],
     virtualDisplayModes: input.virtualDisplayModes ?? [STREAMER_DEFAULT_BROWSER_VIRTUAL_DISPLAY_MODE],
     clientType: STREAMER_CLIENT_TYPES.Client_ANDROID,
     controlConnectType: input.controlConnectType ?? STREAMER_CONTROL_CONNECT_TYPES.ControlConnectType_Normal,

@@ -62,6 +62,10 @@ for (let index = 0; index < 26; index += 1) {
   ANDROID_KEY_CODES_BY_DOM_CODE[`Key${String.fromCharCode(65 + index)}`] = 29 + index;
 }
 
+export function toAndroidKeyCodeFromDomCode(code: string): number | undefined {
+  return ANDROID_KEY_CODES_BY_DOM_CODE[code];
+}
+
 export function toAndroidKeyCodeFromDomEvent(event: DomKeyboardEventLike): string | number {
-  return ANDROID_KEY_CODES_BY_DOM_CODE[event.code] ?? event.key;
+  return toAndroidKeyCodeFromDomCode(event.code) ?? event.key;
 }

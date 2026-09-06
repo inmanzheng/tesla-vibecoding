@@ -1,5 +1,10 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+
+function sharedSource(file: string): string {
+  return fileURLToPath(new URL(`../shared/src/${file}`, import.meta.url));
+}
 
 export default defineConfig({
   plugins: [react()],
@@ -10,14 +15,14 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@uurc/shared/streamerProtocol": new URL("../shared/src/streamerProtocol.ts", import.meta.url).pathname,
-      "@uurc/shared/authState": new URL("../shared/src/authState.ts", import.meta.url).pathname,
-      "@uurc/shared/constants": new URL("../shared/src/constants.ts", import.meta.url).pathname,
-      "@uurc/shared/loginFlow": new URL("../shared/src/loginFlow.ts", import.meta.url).pathname,
-      "@uurc/shared/remoteBootstrap": new URL("../shared/src/remoteBootstrap.ts", import.meta.url).pathname,
-      "@uurc/shared/roomConfig": new URL("../shared/src/roomConfig.ts", import.meta.url).pathname,
-      "@uurc/shared/types": new URL("../shared/src/types.ts", import.meta.url).pathname,
-      "@uurc/shared": new URL("../shared/src/index.ts", import.meta.url).pathname,
+      "@uurc/shared/streamerProtocol": sharedSource("streamerProtocol.ts"),
+      "@uurc/shared/authState": sharedSource("authState.ts"),
+      "@uurc/shared/constants": sharedSource("constants.ts"),
+      "@uurc/shared/loginFlow": sharedSource("loginFlow.ts"),
+      "@uurc/shared/remoteBootstrap": sharedSource("remoteBootstrap.ts"),
+      "@uurc/shared/roomConfig": sharedSource("roomConfig.ts"),
+      "@uurc/shared/types": sharedSource("types.ts"),
+      "@uurc/shared": sharedSource("index.ts"),
     },
   },
 });

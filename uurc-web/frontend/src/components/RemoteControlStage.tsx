@@ -17,8 +17,11 @@ export function RemoteControlStage({
   onRemoteStagePointerMove,
   onRemoteStagePointerUp,
   onRemoteStageWheel,
+  onRemoteAudioBlocked,
   onRemoteVideoSample,
   primaryRemoteVideoActive,
+  remoteAudioMuted,
+  remoteAudioPlayNonce,
   primaryRemoteVideoId,
   remoteStageRef,
   remoteStageViewMode,
@@ -42,7 +45,10 @@ export function RemoteControlStage({
   | "onRemoteStagePointerMove"
   | "onRemoteStagePointerUp"
   | "onRemoteStageWheel"
+  | "onRemoteAudioBlocked"
   | "onRemoteVideoSample"
+  | "remoteAudioMuted"
+  | "remoteAudioPlayNonce"
   | "primaryRemoteVideoActive"
   | "primaryRemoteVideoId"
   | "remoteStageRef"
@@ -85,7 +91,10 @@ export function RemoteControlStage({
                 index={index}
                 visible={video.id === primaryRemoteVideoId}
                 stream={video.stream}
+                muted={video.id !== primaryRemoteVideoId || remoteAudioMuted}
+                playNonce={remoteAudioPlayNonce}
                 onVideoSample={onRemoteVideoSample}
+                onUnmuteBlocked={onRemoteAudioBlocked}
               />
             ))}
           </div>

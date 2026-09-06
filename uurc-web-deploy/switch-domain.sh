@@ -42,10 +42,22 @@ sudo mkdir -p /etc/caddy
 sudo tee /etc/caddy/Caddyfile > /dev/null <<EOF
 $DOMAIN {
     tls $EMAIL
-    basicauth {
-        1111 $HASH
+    @pair {
+        path /pair /pair/* /api/input-bridge /api/input-bridge/* /assets /assets/*
     }
-    reverse_proxy 127.0.0.1:8787
+    handle @pair {
+        header Permissions-Policy "microphone=(self)"
+        header Feature-Policy "microphone 'self'"
+        reverse_proxy 127.0.0.1:8787
+    }
+    handle {
+        header Permissions-Policy "microphone=(self)"
+        header Feature-Policy "microphone 'self'"
+        basicauth {
+            1111 $HASH
+        }
+        reverse_proxy 127.0.0.1:8787
+    }
 }
 :80 {
     redir https://{host}{uri} 301

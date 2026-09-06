@@ -1,9 +1,15 @@
 import { MonitorX, TerminalSquare } from "lucide-react";
 
 import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
+import { useState } from "react";
+
+import { describeInputProbe, probeCarMicrophone } from "../remote/carVoiceInput.js";
+import { InputBridgePanel } from "./InputBridgePanel.js";
+import { OnScreenKeyboard } from "./OnScreenKeyboard.js";
 import { RemoteCommandBar } from "./RemoteCommandBar.js";
 import { RemoteControlDiagnosticsDrawer } from "./RemoteControlDiagnosticsDrawer.js";
 import { RemoteControlInsights } from "./RemoteControlInsights.js";
+import { RemoteCuaDrawer } from "./RemoteCuaDrawer.js";
 import { RemoteControlSettingsDrawer } from "./RemoteControlSettingsDrawer.js";
 import { RemoteControlStage } from "./RemoteControlStage.js";
 import { RemoteControlTopbar } from "./RemoteControlTopbar.js";
@@ -52,10 +58,26 @@ export function RemoteControlPage(props: RemoteControlPageProps) {
         >
           <RemoteCommandBar {...props} />
           <RemoteControlStage {...props} />
+          {props.inputBridgePanelOpen ? (
+            <InputBridgePanel
+              pairId={props.inputBridgeId}
+              pairUrl={props.inputBridgeUrl}
+              status={props.inputBridgeStatus}
+              onClose={props.onToggleInputBridge}
+            />
+          ) : null}
+          {props.onScreenKeyboardOpen ? (
+            <OnScreenKeyboard
+              sender={{ sendKeyboardInput: props.onOskKeyboardInput }}
+              onClose={props.onToggleOnScreenKeyboard}
+            />
+          ) : null}
+          {props.inputProbeEnabled ? <InputCapabilityProbe /> : null}
         </div>
         <RemoteControlWarnings {...props} />
         <RemoteControlInsights {...props} />
         <div className="control-drawer-row">
+          <RemoteCuaDrawer {...props} />
           <RemoteControlSettingsDrawer {...props} />
           <RemoteControlDiagnosticsDrawer {...props} />
         </div>
@@ -63,3 +85,24 @@ export function RemoteControlPage(props: RemoteControlPageProps) {
     </main>
   );
 }
+
+function InputCapabilityProbe() {
+  const [label, setLabel] = useState(() => describeInputProbe());
+  return (
+    <div className="input-probe" aria-label="输入能力探针">
+      <code>{label}</code>
+      <button type="button" onClick={() => setLabel(describeInputProbe())}>
+        测 Speech
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          void probeCarMicrophone().then(setLabel);
+        }}
+      >
+        测 getUserMedia
+      </button>
+    </div>
+  );
+}
+

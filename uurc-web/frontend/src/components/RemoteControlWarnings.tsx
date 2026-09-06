@@ -3,7 +3,6 @@ import { Info, TriangleAlert } from "lucide-react";
 import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
 
 export function RemoteControlWarnings({
-  forceJoin,
   normalJoinTakeoverHint,
   occupiedBySelfClient,
   occupyingParticipantLabel,
@@ -13,7 +12,6 @@ export function RemoteControlWarnings({
   signalGatewayErrorHint,
 }: Pick<
   RemoteControlPageProps,
-  | "forceJoin"
   | "normalJoinTakeoverHint"
   | "occupiedBySelfClient"
   | "occupyingParticipantLabel"
@@ -24,15 +22,14 @@ export function RemoteControlWarnings({
 >) {
   return (
     <>
-      {occupiedBySelfClient ? (
+      {occupiedBySelfClient || selectedDeviceOccupied ? (
         <div className="occupancy-callout info">
           <Info size={17} />
-          <span>检测到你之前的会话仍在占用这台设备，将自动接管，无需额外操作。</span>
-        </div>
-      ) : selectedDeviceOccupied && !forceJoin ? (
-        <div className="occupancy-callout takeover">
-          <TriangleAlert size={17} />
-          <span>该设备正被{occupyingParticipantLabel}占用。点击「接管并开始连接」可强制接管，对方将被断开。</span>
+          <span>
+            {occupiedBySelfClient
+              ? "检测到你之前的会话仍在占用，将自动接管。"
+              : `该设备正被${occupyingParticipantLabel}占用，本页会自动接管并断开上一处控制。`}
+          </span>
         </div>
       ) : null}
       {roomJoinFailureMessage ? (

@@ -1,0 +1,334 @@
+.pair-shell {
+  width: min(640px, 100vw);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 20px 16px 96px;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 12px;
+}
+
+.pair-shell h1 {
+  font-size: 28px;
+  letter-spacing: -0.03em;
+}
+
+.pair-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pair-code {
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.pair-link {
+  min-width: 132px;
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.pair-link strong,
+.pair-link small {
+  line-height: 1.3;
+}
+
+.pair-link small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.pair-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.pair-link.is-online .pair-dot {
+  background: #16a34a;
+}
+
+.pair-link.is-wait .pair-dot {
+  background: #d97706;
+}
+
+.pair-status-line {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.pair-body {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.pair-label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.pair-label input,
+.pair-composer {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  padding: 14px;
+  font-size: 18px;
+}
+
+.pair-composer {
+  min-height: min(42vh, 280px);
+  resize: vertical;
+}
+
+.pair-keyboard-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.pair-send,
+.pair-cancel {
+  min-height: 52px;
+  border: 0;
+  border-radius: var(--radius);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.pair-send {
+  background: var(--accent);
+  color: #fff;
+}
+
+.pair-send:disabled,
+.pair-cancel:disabled {
+  opacity: 0.5;
+}
+
+.pair-cancel {
+  min-width: 88px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.pair-error {
+  color: var(--danger);
+}
+
+.pair-hint,
+.pair-back,
+.pair-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.pair-empty {
+  padding: 18px 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.pair-dock {
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  z-index: 6;
+  width: min(640px, calc(100vw - 24px));
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+.pair-dock button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pair-dock button.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.pair-trackpad-wrap {
+  display: grid;
+  gap: 10px;
+}
+
+.pair-trackpad {
+  min-height: min(58vh, 420px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(37, 99, 235, 0.08), transparent 55%),
+    var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  color: var(--text-muted);
+  font-size: 16px;
+}
+
+.pair-trackpad small {
+  font-size: 12px;
+}
+
+.pair-trackpad.is-disabled {
+  opacity: 0.5;
+}
+
+.pair-trackpad-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pair-trackpad-actions button,
+.pair-shortcuts button,
+.pair-app-list button {
+  min-height: 48px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 16px;
+}
+
+.pair-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pair-shortcuts button:disabled,
+.pair-app-list button:disabled {
+  opacity: 0.45;
+}
+
+.pair-macro-stack,
+.pair-app-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.pair-macro-group h2,
+.pair-app-panel h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.pair-app-list {
+  display: grid;
+  gap: 8px;
+}
+
+.pair-app-list button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 14px;
+  text-align: left;
+}
+
+.pair-app-list button.is-active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.pair-app-list small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.remote-cua-form {
+  display: grid;
+  gap: 10px;
+}
+
+.remote-cua-form input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 0 12px;
+  font-size: 15px;
+}
+
+.remote-cua-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.remote-cua-actions button {
+  min-height: 40px;
+}
+
+.remote-cua-preview,
+.remote-cua-meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.remote-cua-log {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.remote-cua-log li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.remote-cua-log strong {
+  font-size: 13px;
+}
+
+.remote-cua-log small {
+  color: var(--text-muted);
+  font-size: 12px;
+}

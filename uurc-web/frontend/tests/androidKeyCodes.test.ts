@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { toAndroidKeyCodeFromDomEvent } from "../src/remote/androidKeyCodes.js";
+import { toAndroidKeyCodeFromDomCode, toAndroidKeyCodeFromDomEvent } from "../src/remote/androidKeyCodes.js";
 
 describe("Android source keycode mapping for streamer input", () => {
   it("maps printable DOM codes to Android KeyEvent codes used by the App input transformer", () => {
     expect(toAndroidKeyCodeFromDomEvent({ code: "KeyA", key: "a" })).toBe(29);
+    expect(toAndroidKeyCodeFromDomCode("KeyA")).toBe(29);
     expect(toAndroidKeyCodeFromDomEvent({ code: "KeyZ", key: "z" })).toBe(54);
     expect(toAndroidKeyCodeFromDomEvent({ code: "Digit0", key: "0" })).toBe(7);
     expect(toAndroidKeyCodeFromDomEvent({ code: "Digit9", key: "9" })).toBe(16);

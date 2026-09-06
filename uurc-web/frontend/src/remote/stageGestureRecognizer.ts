@@ -1,5 +1,7 @@
 export const GESTURE_THRESHOLDS = {
-  CLASSIFY_MS: 80,
+  CLASSIFY_MS: 16,
+  PRECISE_CLASSIFY_MS: 80,
+  LONG_PRESS_MS: 450,
   MOUSE_SLOP_PX: 12,
   SCROLL_GAIN: 1.2,
   SCROLL_MIN_PX: 2,
@@ -11,6 +13,8 @@ export const GESTURE_THRESHOLDS = {
   SWIPE_COOLDOWN_MS: 400,
   MAX_POINTERS: 4,
 } as const;
+
+export type GesturePointerStyle = "touchscreen" | "precise";
 
 export type GestureMode = "idle" | "pending" | "mouse" | "scroll" | "swipe";
 
@@ -50,9 +54,17 @@ type TrackedPointer = {
 
 type Point = { x: number; y: number };
 
-export function createStageGestureRecognizer(now: () => number = defaultNow) {
+export function createStageGestureRecognizer(
+  now: () => number = defaultNow,
+  options?: { pointerStyle?: GesturePointerStyle },
+) {
+  const pointerStyle = options?.pointerStyle ?? "touchscreen";
+  const classifyMs =
+    pointerStyle === "precise" ? GESTURE_THRESHOLDS.PRECISE_CLASSIFY_MS : GESTURE_THRESHOLDS.CLASSIFY_MS;
   let mode: GestureMode = "idle";
   let mouseArmed = false;
+  let heldButton = 0;
+  let longPressFired = false;
   let swipeFired = false;
   let pendingSince = 0;
   let lastCentroid: Point | null = null;
@@ -84,13 +96,17 @@ export function createStageGestureRecognizer(now: () => number = defaultNow) {
     const commands: GestureCommand[] = [];
     const count = pointers.size;
     if (count === 1) {
-      mode = "pending";
       pendingSince = now();
-      mouseArmed = false;
       swipeFired = false;
+      longPressFired = false;
       lastCentroid = null;
       lastDistance = null;
-      return commands;
+      if (pointerStyle === "precise") {
+        mode = "pending";
+        mouseArmed = false;
+        return commands;
+      }
+      return commitMouse(sample.clientX, sample.clientY, sample.button);
     }
     if (count === 2) {
       commands.push(...abortMouse());
@@ -101,6 +117,7 @@ export function createStageGestureRecognizer(now: () => number = defaultNow) {
     }
     commands.push(...abortMouse());
     mode = "swipe";
+    rebaseStarts();
     return commands;
   }
 
@@ -133,14 +150,33 @@ export function createStageGestureRecognizer(now: () => number = defaultNow) {
     return finishPointer(sample, { clickIfPending: false });
   }
 
+  function tick(): GestureCommand[] {
+    if (mode === "pending" && pointers.size === 1) {
+      const tracked = [...pointers.values()][0];
+      if (!tracked) return [];
+      if (now() - pendingSince < classifyMs) return [];
+      return commitMouse(tracked.x, tracked.y, tracked.button);
+    }
+    if (mode === "mouse" && pointers.size === 1 && pointerStyle === "touchscreen" && !longPressFired) {
+      const tracked = [...pointers.values()][0];
+      if (!tracked) return [];
+      if (now() - pendingSince < GESTURE_THRESHOLDS.LONG_PRESS_MS) return [];
+      if (travel(tracked) >= GESTURE_THRESHOLDS.MOUSE_SLOP_PX) return [];
+      longPressFired = true;
+      const previousButton = heldButton;
+      heldButton = 2;
+      tracked.button = 2;
+      return [
+        { type: "mouseRelease", button: previousButton },
+        { type: "mousePress", button: 2 },
+      ];
+    }
+    return [];
+  }
+
   function reset(): GestureCommand[] {
     const commands = abortMouse();
-    pointers.clear();
-    mode = "idle";
-    swipeFired = false;
-    lastCentroid = null;
-    lastDistance = null;
-    pendingSince = 0;
+    clearGesture();
     maxCount = 0;
     return commands;
   }
@@ -164,18 +200,20 @@ export function createStageGestureRecognizer(now: () => number = defaultNow) {
     } else if (mode === "mouse" && pointers.size === 1) {
       commands.push(
         { type: "mouseMove", clientX: sample.clientX, clientY: sample.clientY },
-        { type: "mouseRelease", button: tracked.button },
+        { type: "mouseRelease", button: heldButton },
       );
       mouseArmed = false;
     }
 
     pointers.delete(sample.pointerId);
     if (pointers.size === 0) {
-      mode = "idle";
+      clearGesture();
+      return commands;
+    }
+    if (mode === "swipe" && pointers.size >= 2) {
+      mode = "scroll";
       swipeFired = false;
-      lastCentroid = null;
-      lastDistance = null;
-      pendingSince = 0;
+      syncTwoFingerBaseline();
       return commands;
     }
     if (mode === "scroll" && pointers.size < 2) {
@@ -192,14 +230,19 @@ export function createStageGestureRecognizer(now: () => number = defaultNow) {
     const tracked = [...pointers.values()][0];
     if (!tracked) return [];
     const elapsed = now() - pendingSince;
-    if (elapsed < GESTURE_THRESHOLDS.CLASSIFY_MS && travel(tracked) < GESTURE_THRESHOLDS.MOUSE_SLOP_PX) {
+    if (elapsed < classifyMs && travel(tracked) < GESTURE_THRESHOLDS.MOUSE_SLOP_PX) {
       return [];
     }
+    return commitMouse(sample.clientX, sample.clientY, tracked.button);
+  }
+
+  function commitMouse(clientX: number, clientY: number, button: number): GestureCommand[] {
     mode = "mouse";
     mouseArmed = true;
+    heldButton = button;
     return [
-      { type: "mouseMove", clientX: sample.clientX, clientY: sample.clientY },
-      { type: "mousePress", button: tracked.button },
+      { type: "mouseMove", clientX, clientY },
+      { type: "mousePress", button },
     ];
   }
 
@@ -239,8 +282,7 @@ export function createStageGestureRecognizer(now: () => number = defaultNow) {
 
   function emitSwipe(): GestureCommand[] {
     if (swipeFired || pointers.size < 3) return [];
-    const elapsed = now() - lastSwipeAt;
-    if (elapsed < GESTURE_THRESHOLDS.SWIPE_COOLDOWN_MS && lastSwipeAt !== Number.NEGATIVE_INFINITY) {
+    if (lastSwipeAt !== Number.NEGATIVE_INFINITY && now() - lastSwipeAt < GESTURE_THRESHOLDS.SWIPE_COOLDOWN_MS) {
       return [];
     }
     const points = [...pointers.values()];
@@ -262,9 +304,28 @@ export function createStageGestureRecognizer(now: () => number = defaultNow) {
 
   function abortMouse(): GestureCommand[] {
     if (!mouseArmed) return [];
-    const tracked = [...pointers.values()][0];
     mouseArmed = false;
-    return [{ type: "mouseRelease", button: tracked?.button ?? 0 }];
+    const button = heldButton;
+    return [{ type: "mouseRelease", button }];
+  }
+
+  function rebaseStarts() {
+    for (const pointer of pointers.values()) {
+      pointer.startX = pointer.x;
+      pointer.startY = pointer.y;
+    }
+  }
+
+  function clearGesture() {
+    pointers.clear();
+    mode = "idle";
+    swipeFired = false;
+    longPressFired = false;
+    heldButton = 0;
+    lastCentroid = null;
+    lastDistance = null;
+    lastSwipeAt = Number.NEGATIVE_INFINITY;
+    pendingSince = 0;
   }
 
   function syncTwoFingerBaseline() {
@@ -283,6 +344,7 @@ export function createStageGestureRecognizer(now: () => number = defaultNow) {
     pointerMove,
     pointerUp,
     pointerCancel,
+    tick,
     reset,
     snapshot,
   };
@@ -313,5 +375,5 @@ function pairDistance(points: readonly TrackedPointer[]): number {
 
 function mean(values: readonly number[]): number {
   if (values.length === 0) return 0;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+  return values.reduce((sum, value) => sum + value) / values.length;
 }

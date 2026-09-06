@@ -55,6 +55,7 @@ export interface BrowserRemotePeerConnection {
   addIceCandidate(candidate: RTCIceCandidateInit): Promise<void>;
   close?: () => void;
   getStats?: () => Promise<BrowserRemoteStatsReport>;
+  getReceivers?: () => RTCRtpReceiver[];
   restartIce?: () => void;
 }
 
@@ -74,9 +75,11 @@ export interface BrowserRemoteSessionOptions {
   api: BrowserRemoteSessionApi;
   createPeerConnection?: (configuration: RTCConfiguration) => BrowserRemotePeerConnection;
   getVideoCodecPreferences?: () => RTCRtpCodec[];
+  getAudioCodecPreferences?: () => RTCRtpCodec[];
   now?: () => number;
   onRemoteStream?: (stream: MediaStream) => void;
   onRemoteClipboard?: (text: string) => void;
+  onPlaybackResume?: () => void;
   onStateChange?: (state: BrowserRemoteSessionState) => void;
 }
 
@@ -130,6 +133,22 @@ export interface BrowserRemoteSelectedCandidatePair {
   currentRoundTripTime?: number;
   availableIncomingBitrate?: number;
   availableOutgoingBitrate?: number;
+}
+
+export interface BrowserRemoteInboundAudioStats {
+  codecId?: string;
+  codecMimeType?: string;
+  codecPayloadType?: number;
+  packetsReceived?: number;
+  packetsLost?: number;
+  bytesReceived?: number;
+  jitter?: number;
+  concealedSamples?: number;
+  silentConcealedSamples?: number;
+  audioLevel?: number;
+  jitterBufferDelay?: number;
+  jitterBufferEmittedCount?: number;
+  timestampMs?: number;
 }
 
 export interface BrowserRemoteInboundVideoStats {
@@ -227,6 +246,7 @@ export interface BrowserRemoteSessionState {
   dataChannels: Partial<Record<StreamerDataChannelLabel, RTCDataChannelState>>;
   debugEvents: BrowserRemoteDebugEvent[];
   iceId?: string;
+  inboundAudio?: BrowserRemoteInboundAudioStats;
   inboundVideo?: BrowserRemoteInboundVideoStats;
   remoteTrackCount: number;
   remoteDisplayId?: number;
@@ -250,7 +270,10 @@ export class BrowserRemoteSession {
 
   private readonly createPeerConnection: (configuration: RTCConfiguration) => BrowserRemotePeerConnection;
   private readonly getVideoCodecPreferences: () => RTCRtpCodec[];
+  private readonly getAudioCodecPreferences: () => RTCRtpCodec[];
   private readonly now: () => number;
+  private readonly audioReceivers: RTCRtpReceiver[] = [];
+  private audioJitterTargetMs = 180;
   private peer: BrowserRemotePeerConnection | null = null;
   private readonly dataChannels = new Map<StreamerDataChannelLabel, BrowserRemoteDataChannel>();
   private echoHeartbeatTimer: ReturnType<typeof setInterval> | undefined;
@@ -294,6 +317,7 @@ export class BrowserRemoteSession {
       options.createPeerConnection ??
       ((configuration) => new RTCPeerConnection(configuration) as BrowserRemotePeerConnection);
     this.getVideoCodecPreferences = options.getVideoCodecPreferences ?? getBrowserH264CodecPreferences;
+    this.getAudioCodecPreferences = options.getAudioCodecPreferences ?? getBrowserOpusCodecPreferences;
     this.now = options.now ?? Date.now;
   }
 
@@ -306,6 +330,7 @@ export class BrowserRemoteSession {
       ...this.state,
       dataChannels: { ...this.state.dataChannels },
       debugEvents: [...this.debugEvents],
+      inboundAudio: this.state.inboundAudio ? { ...this.state.inboundAudio } : undefined,
       inboundVideo: this.state.inboundVideo ? { ...this.state.inboundVideo } : undefined,
       selectedCandidatePair: this.state.selectedCandidatePair ? { ...this.state.selectedCandidatePair } : undefined,
       videoElement: this.state.videoElement ? { ...this.state.videoElement } : undefined,
@@ -352,6 +377,8 @@ export class BrowserRemoteSession {
     this.heldMouseButtons.clear();
     this.previousStatsSample = undefined;
     this.previousVideoElementSample = undefined;
+    this.audioReceivers.length = 0;
+    this.audioJitterTargetMs = 180;
     this.setState({
       appControlId: "",
       connectionPath: "unknown",
@@ -523,6 +550,9 @@ export class BrowserRemoteSession {
     const previousFlowStatus = this.state.videoFlow?.status;
     const selectedCandidatePair = readSelectedCandidatePair(report);
     const inboundVideo = readInboundVideoStats(report);
+    const inboundAudio = readInboundAudioStats(report);
+    this.audioJitterTargetMs = chooseAudioJitterTargetMs(inboundAudio);
+    this.reapplyPlayoutHints();
     const videoFlow = diagnoseVideoFlow({
       nowMs: sampledAtMs,
       previous: this.previousStatsSample,
@@ -542,6 +572,7 @@ export class BrowserRemoteSession {
     this.setState({
       ...this.state,
       connectionPath: selectedCandidatePair.connectionPath,
+      inboundAudio,
       inboundVideo,
       selectedCandidatePair: selectedCandidatePair.pair,
       videoFlow,
@@ -549,6 +580,7 @@ export class BrowserRemoteSession {
     this.recordDebugEvent("stats", videoFlow.title, {
       status: videoFlow.status,
       delta: videoFlow.delta,
+      inboundAudio,
       inboundVideo,
       selectedCandidatePair: selectedCandidatePair.pair,
     });
@@ -684,7 +716,8 @@ export class BrowserRemoteSession {
       const transceiver = peer.addTransceiver("video", { direction: "recvonly" });
       applyVideoCodecPreferences(transceiver, videoCodecs);
     }
-    peer.addTransceiver("audio", { direction: "recvonly" });
+    const audioTransceiver = peer.addTransceiver("audio", { direction: "recvonly" });
+    applyVideoCodecPreferences(audioTransceiver, this.getAudioCodecPreferences());
   }
 
   private async sendLocalCandidate(candidate: RTCIceCandidateInit | null): Promise<void> {
@@ -760,6 +793,10 @@ export class BrowserRemoteSession {
         stage: "connected",
       });
       await this.flushQueuedCandidates();
+      if (type === "restart_ice") {
+        this.reapplyPlayoutHints();
+        this.options.onPlaybackResume?.();
+      }
       return;
     }
 
@@ -863,6 +900,22 @@ export class BrowserRemoteSession {
       trackKind: event.track.kind,
       remoteTrackCount: nextTrackCount,
     });
+    if (event.track.kind === "audio" && event.receiver) {
+      this.audioReceivers.push(event.receiver);
+    }
+    applyReceiverPlayoutHint(event.receiver, event.track.kind, this.audioJitterTargetMs);
+  }
+
+  private reapplyPlayoutHints(): void {
+    for (const receiver of this.audioReceivers) {
+      applyReceiverPlayoutHint(receiver, "audio", this.audioJitterTargetMs);
+    }
+    const receivers = this.peer?.getReceivers?.() ?? [];
+    for (const receiver of receivers) {
+      if (receiver.track?.kind === "video") {
+        applyReceiverPlayoutHint(receiver, "video");
+      }
+    }
   }
 
   private startEchoHeartbeat(): void {
@@ -1449,6 +1502,15 @@ function createMediaStream(): MediaStream | null {
   return typeof MediaStream === "undefined" ? null : new MediaStream();
 }
 
+function getBrowserOpusCodecPreferences(): RTCRtpCodec[] {
+  if (typeof RTCRtpReceiver === "undefined" || typeof RTCRtpReceiver.getCapabilities !== "function") return [];
+  const codecs = RTCRtpReceiver.getCapabilities("audio")?.codecs ?? [];
+  const opusCodecs = codecs.filter((codec) => codec.mimeType.toLowerCase() === "audio/opus");
+  if (opusCodecs.length === 0) return [];
+  const otherCodecs = codecs.filter((codec) => codec.mimeType.toLowerCase() !== "audio/opus");
+  return [...opusCodecs, ...otherCodecs];
+}
+
 function getBrowserH264CodecPreferences(): RTCRtpCodec[] {
   if (typeof RTCRtpSender === "undefined" || typeof RTCRtpSender.getCapabilities !== "function") return [];
   const codecs = RTCRtpSender.getCapabilities("video")?.codecs ?? [];
@@ -1552,6 +1614,48 @@ function readInboundVideoStats(report: BrowserRemoteStatsReport): BrowserRemoteI
     assignString(stats, "codecMimeType", codec.mimeType);
     assignOptionalNumber(stats, "codecPayloadType", codec.payloadType);
   }
+  return Object.keys(stats).length > 0 ? stats : undefined;
+}
+
+function readInboundAudioStats(report: BrowserRemoteStatsReport): BrowserRemoteInboundAudioStats | undefined {
+  const entries = new Map<string, Record<string, unknown>>();
+  const records: Record<string, unknown>[] = [];
+  report.forEach((value, key) => {
+    const record = asRecord(value);
+    if (record) entries.set(key, record);
+    if (record && record.type === "inbound-rtp" && (record.kind === "audio" || record.mediaType === "audio")) {
+      records.push(record);
+    }
+  });
+  const record = records.sort((left, right) => numberValue(right.packetsReceived) - numberValue(left.packetsReceived))[0];
+  if (!record) return undefined;
+
+  const stats: BrowserRemoteInboundAudioStats = {};
+  assignString(stats, "codecId", record.codecId);
+  assignOptionalNumber(stats, "packetsReceived", record.packetsReceived);
+  assignOptionalNumber(stats, "packetsLost", record.packetsLost);
+  assignOptionalNumber(stats, "bytesReceived", record.bytesReceived);
+  assignOptionalNumber(stats, "jitter", record.jitter);
+  assignOptionalNumber(stats, "concealedSamples", record.concealedSamples);
+  assignOptionalNumber(stats, "silentConcealedSamples", record.silentConcealedSamples);
+  assignOptionalNumber(stats, "audioLevel", record.audioLevel);
+  assignOptionalNumber(stats, "jitterBufferDelay", record.jitterBufferDelay);
+  assignOptionalNumber(stats, "jitterBufferEmittedCount", record.jitterBufferEmittedCount);
+  assignOptionalNumber(stats, "timestampMs", record.timestamp);
+
+  const codec = entries.get(stringValue(record.codecId));
+  if (codec) {
+    assignString(stats, "codecMimeType", codec.mimeType);
+    assignOptionalNumber(stats, "codecPayloadType", codec.payloadType);
+  }
+
+  if (stats.audioLevel === undefined) {
+    const mediaSource = [...entries.values()].find(
+      (entry) => entry.type === "media-source" && (entry.kind === "audio" || entry.mediaType === "audio"),
+    );
+    if (mediaSource) assignOptionalNumber(stats, "audioLevel", mediaSource.audioLevel);
+  }
+
   return Object.keys(stats).length > 0 ? stats : undefined;
 }
 
@@ -1687,6 +1791,32 @@ function isWindowsPlatform(platform: number | undefined): boolean {
 // 桌面被控端(Mac/Windows)输入走「裸 JSON + 归一化坐标」；移动端(安卓/MuMu)走「protobuf + 像素」。
 function isDesktopPlatform(platform: number | undefined): boolean {
   return isMacPlatform(platform) || isWindowsPlatform(platform);
+}
+
+export function chooseAudioJitterTargetMs(stats?: BrowserRemoteInboundAudioStats): number {
+  const received = stats?.packetsReceived ?? 0;
+  const lost = stats?.packetsLost ?? 0;
+  const lossRate = received + lost > 0 ? lost / (received + lost) : 0;
+  const concealed = stats?.concealedSamples ?? 0;
+  if (lossRate >= 0.05 || concealed >= 1000) return 400;
+  if (lossRate >= 0.02 || concealed >= 200) return 250;
+  return 100;
+}
+
+function applyReceiverPlayoutHint(receiver: RTCRtpReceiver | undefined, kind: string, audioTargetMs = 180): void {
+  if (!receiver) return;
+  const targetMs = kind === "audio" ? audioTargetMs : 80;
+  const playout = receiver as RTCRtpReceiver & { jitterBufferTarget?: number; playoutDelayHint?: number };
+  try {
+    playout.jitterBufferTarget = targetMs;
+  } catch {
+    // 部分浏览器只读或尚未实现。
+  }
+  try {
+    playout.playoutDelayHint = targetMs / 1000;
+  } catch {
+    // Safari / 旧 Chromium 可能没有这个提示。
+  }
 }
 
 function assignString<T extends object, K extends keyof T>(target: T, key: K, value: unknown): void {

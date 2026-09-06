@@ -27,4 +27,11 @@ describe("gateway-only backend routes", () => {
     await request(app).get("/api/devices").expect(404);
     await request(app).post("/api/rooms/join-by-device").send({ deviceId: "desktop-1" }).expect(404);
   });
+
+  it("declares microphone permission policy so Chromium can prompt", async () => {
+    const { app } = createApp({ enableDiagnostics: true });
+    const response = await request(app).get("/api/runtime").expect(200);
+    expect(response.headers["permissions-policy"]).toContain("microphone=(self)");
+    expect(response.headers["feature-policy"]).toContain("microphone");
+  });
 });

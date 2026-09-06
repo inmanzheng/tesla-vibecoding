@@ -16,6 +16,7 @@ export function RemoteControlDiagnosticsDrawer({
   debugEvents,
   effectiveConnectionRouteLabel,
   iceControlStatusLabel,
+  inboundAudioStatsLabel,
   inboundVideoStatsLabel,
   inputControlActive,
   joinModeLabel,
@@ -51,6 +52,7 @@ export function RemoteControlDiagnosticsDrawer({
   | "debugEvents"
   | "effectiveConnectionRouteLabel"
   | "iceControlStatusLabel"
+  | "inboundAudioStatsLabel"
   | "inboundVideoStatsLabel"
   | "inputControlActive"
   | "joinModeLabel"
@@ -97,6 +99,7 @@ export function RemoteControlDiagnosticsDrawer({
         <StatusRow label="网络事件" value={networkSwitchSummary} />
         <StatusRow label="视频状态" value={videoFlowLabel} />
         <StatusRow label="视频接收" value={inboundVideoStatsLabel} />
+        <StatusRow label="音频接收" value={inboundAudioStatsLabel} />
         <StatusRow label="视频采样" value={videoElementLabel} />
         <StatusRow label="控制通道" value={controlChannelLabel} />
         <StatusRow label="文本通道" value={textChannelLabel} />

@@ -330,8 +330,8 @@ describe("App console", () => {
     expect(within(macParticipant as HTMLElement).getByText(/模式：普通桌面/)).toBeInTheDocument();
     expect(screen.getByText("控制模式")).toBeInTheDocument();
     expect(screen.getAllByText("普通桌面").length).toBeGreaterThan(0);
-    expect(screen.getByRole("radio", { name: "普通加入" })).toBeChecked();
-    expect(screen.getByRole("radio", { name: "接管控制" })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "普通加入" })).not.toBeChecked();
     expect(screen.queryByText(/room-token-1/)).not.toBeInTheDocument();
     expect(screen.queryByText(/report-token-1/)).not.toBeInTheDocument();
     expect(screen.getByText("连接服务")).toBeInTheDocument();
@@ -345,11 +345,7 @@ describe("App console", () => {
     expect(getPrimaryAction("开始连接")).toBeEnabled();
     expect(screen.queryByText("选择接管后重试")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("radio", { name: "接管控制" }));
-    await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
-    });
-    await user.click(getPrimaryAction("接管并开始连接"));
+    await user.click(getPrimaryAction("开始连接"));
     await waitFor(() => {
       expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     });
@@ -493,6 +489,21 @@ describe("App console", () => {
     expect(screen.queryByRole("heading", { name: "我的设备" })).not.toBeInTheDocument();
   });
 
+  it("auto force-joins when the target is already occupied", async () => {
+    window.localStorage.setItem("uurc.autoConnect", "true");
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user, { waitForReady: false });
+
+    await waitFor(() => {
+      const joinCalls = requestLog.filter((call) => call.path === "/api/v1/room/join/by_device/desktop-1");
+      expect(joinCalls.length).toBeGreaterThan(0);
+      expect(joinCalls[0]?.body).toMatchObject({ force_join: true });
+    });
+    expect(document.body.textContent).toMatch(/自动接管/);
+  });
+
   it("shows the upstream room join blocker when the service refuses an occupied target", async () => {
     joinRoomFailure = true;
     const user = userEvent.setup();
@@ -504,8 +515,6 @@ describe("App console", () => {
     await waitFor(() => {
       expect(document.body.textContent).toContain("服务端拒绝加入房间");
     });
-    // 占用者非本人时，提示合并到占用条：告知可点「接管并开始连接」强制接管。
-    expect(document.body.textContent).toContain("接管并开始连接");
     expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
   });
 
@@ -570,7 +579,7 @@ describe("App console", () => {
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
     });
-    await user.click(getPrimaryAction("接管并开始连接"));
+    await user.click(getPrimaryAction("开始连接"));
     await waitFor(() => {
       expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     });
@@ -628,7 +637,7 @@ describe("App console", () => {
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
     });
-    await user.click(getPrimaryAction("接管并开始连接"));
+    await user.click(getPrimaryAction("开始连接"));
     await waitFor(() => {
       expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     });
@@ -686,6 +695,7 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "普通加入" }));
     await startCompatibleConnection(user);
     await waitFor(() => {
       expectSignalState("已连接");
@@ -742,7 +752,7 @@ describe("App console", () => {
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
     });
-    await user.click(getPrimaryAction("接管并开始连接"));
+    await user.click(getPrimaryAction("开始连接"));
     await waitFor(() => {
       expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     });
@@ -790,7 +800,7 @@ describe("App console", () => {
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
     });
-    await user.click(getPrimaryAction("接管并开始连接"));
+    await user.click(getPrimaryAction("开始连接"));
     await waitFor(() => {
       expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     });
@@ -827,7 +837,7 @@ describe("App console", () => {
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
     });
-    await user.click(getPrimaryAction("接管并开始连接"));
+    await user.click(getPrimaryAction("开始连接"));
     await waitFor(() => {
       expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     });
@@ -866,6 +876,7 @@ describe("App console", () => {
     // 连接后默认进入控制状态：自动启用输入控制并聚焦画面，无需手动点一下。
     const controlSegment = await screen.findByRole("button", { name: "控制中" });
     expect(controlSegment).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "静音" })).toBeInTheDocument();
     expect(document.activeElement).toHaveAttribute("aria-label", "远控画面");
 
     // 忠实按键:普通键在 keydown 即同步发「按下+抬起」一对(瞬时一击)，不在被控端留下“按住”状态。
@@ -906,6 +917,7 @@ describe("App console", () => {
     });
     expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     expect(requestLog.filter((call) => call.path === "/api/remote/signal/start")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "静音" })).toBeInTheDocument();
   });
 
   it("auto reconnects recoverable sessions without rejoining the UU room", async () => {
@@ -1098,6 +1110,7 @@ describe("App console", () => {
       "丢帧",
       "冻结",
       "丢包",
+      "音频",
       "抖动缓冲",
       "下行余量",
       "上行余量",

@@ -13,6 +13,9 @@ import type {
   BrowserRemoteSessionState,
   BrowserRemoteVideoElementSample,
 } from "../remote/browserRemoteSession.js";
+import type { VoiceInputStatus } from "../remote/carVoiceInput.js";
+import type { CuaIntent } from "../remote/cuaIntent.js";
+import type { CuaTaskResult } from "../remote/inputBridgeClient.js";
 import type { RemoteShortcut } from "../remote/remoteShortcuts.js";
 import type {
   BusyAction,
@@ -55,9 +58,26 @@ export interface RemoteControlPageProps {
   forceJoin: boolean;
   hasRemoteVideo: boolean;
   iceControlStatusLabel: string;
+  inboundAudioStatsLabel: string;
   inboundVideoStatsLabel: string;
   inputControlActive: boolean;
   inputControlLabel: string;
+  inputBridgeId: string;
+  inputBridgePanelOpen: boolean;
+  inputBridgeUrl: string;
+  inputBridgeStatus: string;
+  cuaDraft: string;
+  cuaPreview: CuaIntent | null;
+  cuaStatus: string;
+  cuaFrontmost: string;
+  cuaAgentOnline: boolean;
+  cuaResults: CuaTaskResult[];
+  streamQuality: "smooth" | "balanced" | "hd";
+  streamQualityLabel: string;
+  inputProbeEnabled: boolean;
+  onScreenKeyboardOpen: boolean;
+  voiceDetail: string;
+  voiceStatus: VoiceInputStatus;
   joinModeLabel: string;
   networkSwitchSummary: string;
   nextAction: NextAction;
@@ -75,6 +95,8 @@ export interface RemoteControlPageProps {
   remoteStageViewMode: RemoteStageViewMode;
   remoteVideoCount: number;
   remoteVideoSources: RemoteVideoSourceInfo[];
+  remoteAudioMuted: boolean;
+  remoteAudioPlayNonce: number;
   remoteVideoStreams: RemoteVideoStream[];
   stageStatusLabel: string;
   roomDebugPayload: unknown;
@@ -136,4 +158,14 @@ export interface RemoteControlPageProps {
   onSendClipboardText: () => void;
   onToggleInputControl: () => void;
   onToggleFullscreen: () => void;
+  onToggleRemoteAudio: () => void;
+  onRemoteAudioBlocked: () => void;
+  onToggleOnScreenKeyboard: () => void;
+  onToggleVoice: () => void;
+  onToggleInputBridge: () => void;
+  onCuaDraftChange: (value: string) => void;
+  onSubmitCua: () => void;
+  onRevealCua: () => void;
+  onCycleStreamQuality: () => void;
+  onOskKeyboardInput: (input: { action: "keyboardPress" | "keyboardRelease"; value: string | number }) => void;
 }

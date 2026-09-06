@@ -118,7 +118,7 @@ export function getNextAction(input: {
   }
   if (!input.roomJoinedForSelectedDevice) {
     return {
-      label: input.forceJoin ? "接管并开始连接" : "开始连接",
+      label: "开始连接",
       detail: "",
       disabled: input.busy !== null,
     };
@@ -275,6 +275,50 @@ export function createSingleTrackMediaStream(track: MediaStreamTrack): MediaStre
   }
 }
 
+export function createPlaybackMediaStream(
+  videoTrack: MediaStreamTrack,
+  audioTracks: readonly MediaStreamTrack[] = [],
+): MediaStream {
+  const stream = createSingleTrackMediaStream(videoTrack);
+  syncStreamAudioTracks(stream, audioTracks);
+  return stream;
+}
+
+export function syncStreamAudioTracks(stream: MediaStream, audioTracks: readonly MediaStreamTrack[]): void {
+  const existing = typeof stream.getAudioTracks === "function" ? stream.getAudioTracks() : [];
+  for (const track of existing) {
+    if (!audioTracks.some((audioTrack) => audioTrack.id === track.id) && typeof stream.removeTrack === "function") {
+      stream.removeTrack(track);
+    }
+  }
+  for (const audioTrack of audioTracks) {
+    const alreadyAdded = existing.some((track) => track.id === audioTrack.id);
+    if (!alreadyAdded && typeof stream.addTrack === "function") {
+      stream.addTrack(audioTrack);
+    }
+  }
+}
+
+export function syncRemotePlaybackStreams(
+  current: readonly RemoteVideoStream[],
+  videoTracks: readonly MediaStreamTrack[],
+  audioTracks: readonly MediaStreamTrack[],
+  primaryVideoId = "",
+): RemoteVideoStream[] {
+  const currentById = new Map(current.map((video) => [video.id, video]));
+  const resolvedPrimary = primaryVideoId || (videoTracks[0]?.id ?? "");
+  return videoTracks.map((track, index) => {
+    const id = track.id || `video-${index + 1}`;
+    const audioForThis = id === resolvedPrimary ? audioTracks : [];
+    const existing = currentById.get(id);
+    if (existing) {
+      syncStreamAudioTracks(existing.stream, audioForThis);
+      return existing;
+    }
+    return { id, stream: createPlaybackMediaStream(track, audioForThis) };
+  });
+}
+
 export function createAppControlId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -340,7 +384,21 @@ export type RemotePointerLike = {
   currentTarget: HTMLDivElement;
 };
 
-export function toRemoteMousePosition(event: RemotePointerLike): { absX: number; absY: number; surfaceWidth: number; surfaceHeight: number } {
+export function readRemoteSurfaceSize(stage: HTMLElement | null): { width: number; height: number } {
+  const video =
+    stage?.querySelector<HTMLVideoElement>('video[data-active="true"]') ?? stage?.querySelector("video") ?? null;
+  return {
+    width: video?.videoWidth || 1920,
+    height: video?.videoHeight || 1080,
+  };
+}
+
+export type RemoteMediaFit = "contain" | "cover";
+
+export function toRemoteMousePosition(
+  event: RemotePointerLike,
+  options?: { fit?: RemoteMediaFit },
+): { absX: number; absY: number; surfaceWidth: number; surfaceHeight: number } {
   const stageRect = event.currentTarget.getBoundingClientRect();
   // 多路视频时优先取当前显示(primary)的画面元素；否则会按非显示画面的分辨率换算，导致鼠标坐标偏移。
   const video =
@@ -348,7 +406,11 @@ export function toRemoteMousePosition(event: RemotePointerLike): { absX: number;
     event.currentTarget.querySelector("video");
   const videoWidth = video?.videoWidth || Math.round(stageRect.width);
   const videoHeight = video?.videoHeight || Math.round(stageRect.height);
-  const rendered = getContainedMediaRect(stageRect, videoWidth, videoHeight);
+  const fit = options?.fit ?? "contain";
+  const rendered =
+    fit === "cover"
+      ? getCoveredMediaRect(stageRect, videoWidth, videoHeight)
+      : getContainedMediaRect(stageRect, videoWidth, videoHeight);
   const relX = clamp((event.clientX - rendered.left) / rendered.width, 0, 1);
   const relY = clamp((event.clientY - rendered.top) / rendered.height, 0, 1);
   return {
@@ -367,7 +429,7 @@ export function toRemoteMouseButton(button: number): StreamerMouseButtonKind {
   return "primary";
 }
 
-function getContainedMediaRect(container: DOMRect, mediaWidth: number, mediaHeight: number): DOMRect {
+export function getContainedMediaRect(container: DOMRect, mediaWidth: number, mediaHeight: number): DOMRect {
   const mediaRatio = mediaWidth / mediaHeight;
   const containerRatio = container.width / container.height;
   if (containerRatio > mediaRatio) {
@@ -377,6 +439,18 @@ function getContainedMediaRect(container: DOMRect, mediaWidth: number, mediaHeig
 
   const height = container.width / mediaRatio;
   return new DOMRect(container.left, container.top + (container.height - height) / 2, container.width, height);
+}
+
+export function getCoveredMediaRect(container: DOMRect, mediaWidth: number, mediaHeight: number): DOMRect {
+  const mediaRatio = mediaWidth / mediaHeight;
+  const containerRatio = container.width / container.height;
+  if (containerRatio > mediaRatio) {
+    const height = container.width / mediaRatio;
+    return new DOMRect(container.left, container.top + (container.height - height) / 2, container.width, height);
+  }
+
+  const width = container.height * mediaRatio;
+  return new DOMRect(container.left + (container.width - width) / 2, container.top, width, container.height);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -439,6 +513,20 @@ export function formatRemoteAssistanceMode(mode: RemoteAssistanceControlMode | n
     default:
       return "";
   }
+}
+
+export function formatInboundAudioStats(stats: BrowserRemoteSessionState["inboundAudio"]): string {
+  if (!stats) return "-";
+  const parts = [
+    stats.codecMimeType,
+    stats.packetsReceived === undefined ? null : `pkt=${stats.packetsReceived}`,
+    stats.packetsLost === undefined ? null : `lost=${stats.packetsLost}`,
+    stats.jitter === undefined ? null : `jitter=${Math.round(stats.jitter * 1000)}ms`,
+    stats.concealedSamples === undefined ? null : `conceal=${stats.concealedSamples}`,
+    stats.audioLevel === undefined ? null : `level=${Math.round(stats.audioLevel * 100)}%`,
+    formatAverageSecondsAsMs(stats.jitterBufferDelay, stats.jitterBufferEmittedCount),
+  ].filter((item): item is string => item !== null);
+  return parts.length > 0 ? parts.join(" · ") : "-";
 }
 
 export function formatInboundVideoStats(stats: BrowserRemoteSessionState["inboundVideo"]): string {
@@ -580,6 +668,12 @@ function buildConnectionQualityMetrics(input: {
     { label: "丢帧", value: formatFrameCount(stats?.framesDropped ?? videoElement?.droppedVideoFrames) ?? "0 帧" },
     { label: "冻结", value: formatCount(stats?.freezeCount) ?? "0 次" },
     { label: "丢包", value: formatPacketLoss(stats?.packetsLost, stats?.packetsReceived) ?? "0 包 · 0%" },
+    {
+      label: "音频",
+      value:
+        formatPacketLoss(input.state.inboundAudio?.packetsLost, input.state.inboundAudio?.packetsReceived) ??
+        "采样中",
+    },
     { label: "抖动缓冲", value: formatAverageSecondsAsMs(stats?.jitterBufferDelay, stats?.jitterBufferEmittedCount) ?? "采样中" },
     { label: "下行余量", value: formatBitrate(pair?.availableIncomingBitrate) ?? "暂无" },
     { label: "上行余量", value: formatBitrate(pair?.availableOutgoingBitrate) ?? "暂无" },

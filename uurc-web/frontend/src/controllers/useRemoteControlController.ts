@@ -61,8 +61,36 @@ import { readLocalClipboardText } from "../browser/clipboard.js";
 import { formatParticipantMeta } from "../devices/deviceLabels.js";
 import { pickControllableDesktop } from "../devices/deviceSummary.js";
 import { BrowserRemoteSession, type BrowserRemoteSessionState, type BrowserRemoteVideoElementSample } from "../remote/browserRemoteSession.js";
+import {
+  MICROPHONE_DENIED_HINT,
+  createCarVoiceInput,
+  getSpeechRecognitionCtor,
+  queryMicrophonePermission,
+  type VoiceInputStatus,
+} from "../remote/carVoiceInput.js";
+import { describeCuaIntent, mapCuaIntent } from "../remote/cuaIntent.js";
+import { TRACKPAD_SCROLL_GAIN, applyTrackpadMove, createCenteredCursor, isAgentBridgeEvent } from "../remote/inputBridgeEvents.js";
+import type { InputBridgeEvent } from "../remote/inputBridgeEvents.js";
+import {
+  ACTIVE_BRIDGE_ID,
+  buildPairLandingUrl,
+  deleteInputBridge,
+  ensureInputBridge,
+  peekInputBridge,
+  pullInputBridgeNext,
+  pushInputBridgeEvents,
+  type CuaTaskResult,
+} from "../remote/inputBridgeClient.js";
 import { remoteShortcutGroupTitleForPlatform, sendRemoteShortcut, type RemoteShortcut } from "../remote/remoteShortcuts.js";
 import {
+  DEFAULT_STREAM_QUALITY,
+  STREAM_QUALITY_PROFILES,
+  cycleStreamQuality,
+  nextLowerStreamQuality,
+  type StreamQualityProfile,
+} from "../remote/streamQuality.js";
+import {
+  GESTURE_THRESHOLDS,
   createStageGestureRecognizer,
   type GestureCommand,
   type GestureSnapshot,
@@ -71,12 +99,12 @@ import {
 import {
   createAppControlId,
   createIdleBrowserRemoteState,
-  createSingleTrackMediaStream,
   formatAutoSwitchThresholds,
   formatBrowserRemoteStage,
   formatConnectionPath,
   formatDataChannelState,
   getRemoteConnectionQuality,
+  formatInboundAudioStats,
   formatInboundVideoStats,
   formatRemoteAssistanceMode,
   formatRoomJoinContext,
@@ -87,9 +115,11 @@ import {
   formatVideoElement,
   formatVideoFlow,
   getNextAction,
+  readRemoteSurfaceSize,
   getRoomJoinFailureMessage,
   getRoomJoinFailureTakeoverHint,
   resolvePrimaryRemoteVideoId,
+  syncRemotePlaybackStreams,
   summarizeRoomJoinUpstream,
   summarizeSwitchNetworkNotify,
   summarizeUnexpectedSignalEvents,
@@ -148,7 +178,7 @@ export function useRemoteControlController() {
   const [devices, setDevices] = useState<UuDeviceGroups>({ desktopDevices: [], mobileDevices: [], tvDevices: [] });
   const [devicesLoaded, setDevicesLoaded] = useState(false);
   const [selectedDeviceIdState, setSelectedDeviceId] = useState("");
-  const [forceJoin, setForceJoin] = useState(false);
+  const [forceJoin, setForceJoin] = useState(true);
   const [assistanceConnectId, setAssistanceConnectId] = useState("");
   const [assistanceConnectCode, setAssistanceConnectCode] = useState("");
   const [assistanceNotice, setAssistanceNotice] = useState("");
@@ -163,6 +193,8 @@ export function useRemoteControlController() {
   const [runtimeProfile, setRuntimeProfile] = useState<RuntimeProfile | null>(null);
   const [browserRemoteState, setBrowserRemoteState] = useState<BrowserRemoteSessionState>(createIdleBrowserRemoteState);
   const [remoteVideoStreams, setRemoteVideoStreams] = useState<RemoteVideoStream[]>([]);
+  const [remoteAudioMuted, setRemoteAudioMuted] = useState(false);
+  const [remoteAudioPlayNonce, setRemoteAudioPlayNonce] = useState(0);
   const [remoteVideoSamplesById, setRemoteVideoSamplesById] = useState<RemoteVideoSamplesById>({});
   const [selectedRemoteVideoId, setSelectedRemoteVideoId] = useState("");
   const [clipboardText, setClipboardText] = useState("");
@@ -177,6 +209,28 @@ export function useRemoteControlController() {
   const [autoConnect, setAutoConnect] = useState<boolean>(readAutoConnectPref);
   const [remoteStageViewMode, setRemoteStageViewMode] = useState<RemoteStageViewMode>("fit");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [onScreenKeyboardOpen, setOnScreenKeyboardOpen] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceInputStatus>(() => (getSpeechRecognitionCtor() ? "idle" : "unsupported"));
+  const [voiceDetail, setVoiceDetail] = useState("");
+  const [inputBridgeId, setInputBridgeId] = useState("");
+  const [inputBridgePanelOpen, setInputBridgePanelOpen] = useState(false);
+  const [inputBridgeUrl, setInputBridgeUrl] = useState("");
+  const [inputBridgeStatus, setInputBridgeStatus] = useState("");
+  const [cuaDraft, setCuaDraft] = useState("");
+  const [cuaStatus, setCuaStatus] = useState("");
+  const [cuaFrontmost, setCuaFrontmost] = useState("");
+  const [cuaAgentOnline, setCuaAgentOnline] = useState(false);
+  const [cuaResults, setCuaResults] = useState<CuaTaskResult[]>([]);
+  const cuaPreview = useMemo(() => {
+    const text = cuaDraft.trim();
+    return text ? mapCuaIntent(text) : null;
+  }, [cuaDraft]);
+  const voiceInputRef = useRef<ReturnType<typeof createCarVoiceInput> | null>(null);
+  const trackpadCursorRef = useRef<{ x: number; y: number; ready: boolean }>({ x: 0, y: 0, ready: false });
+  const [streamQuality, setStreamQuality] = useState<StreamQualityProfile>(DEFAULT_STREAM_QUALITY);
+  const streamQualityRef = useRef<StreamQualityProfile>(DEFAULT_STREAM_QUALITY);
+  const qualityStallSinceRef = useRef(0);
+  const qualityDowngradeBusyRef = useRef(false);
   const [signalServerIndex, setSignalServerIndex] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<BusyAction>("status");
@@ -188,6 +242,13 @@ export function useRemoteControlController() {
   const autoConnectAttemptedDeviceRef = useRef<string>("");
   const controlChannelOpenedRef = useRef(false);
   const gestureRecognizer = useRef(createStageGestureRecognizer());
+  const lastStagePointerEventRef = useRef<PointerEvent<HTMLDivElement> | null>(null);
+  const classifyTimerRef = useRef<number | null>(null);
+  const lastRemoteVideoTracksRef = useRef<MediaStreamTrack[]>([]);
+  const lastRemoteAudioTracksRef = useRef<MediaStreamTrack[]>([]);
+  const primaryRemoteVideoIdRef = useRef("");
+  const remoteStageViewModeRef = useRef<RemoteStageViewMode>("fit");
+  const remoteAudioBlockedToastShownRef = useRef(false);
   const navigate = useNavigate();
   const controlRouteMatch = useMatch("/devices/:deviceId/control");
   const routeSelectedDeviceId = controlRouteMatch?.params.deviceId ?? "";
@@ -214,7 +275,7 @@ export function useRemoteControlController() {
   const selectedParticipants = selectedDevice?.participantsInfo ?? [];
   const selectedDeviceOccupied = selectedParticipants.length > 0;
   // 用 participant.clientId 与当前网页控制端的 clientId 比对，区分“占用者是不是自己上一个会话”。
-  // 仅当占用者全部是自己时才自动接管；任一占用者是他人则保留显式接管步骤（避免误踢真实控制端）。
+  // 新页面发起控制时一律 force 接管，踢掉上一页/上一会话。
   const currentClientId = authStatus?.clientId ?? "";
   const occupiedBySelfClient =
     selectedParticipants.length > 0 &&
@@ -236,6 +297,39 @@ export function useRemoteControlController() {
     () => resolvePrimaryRemoteVideoId(remoteVideoStreams, remoteVideoSamplesById, selectedRemoteVideoId),
     [remoteVideoSamplesById, remoteVideoStreams, selectedRemoteVideoId],
   );
+  primaryRemoteVideoIdRef.current = primaryRemoteVideoId;
+  remoteStageViewModeRef.current = remoteStageViewMode;
+
+  useEffect(() => {
+    if (lastRemoteVideoTracksRef.current.length === 0) return;
+    setRemoteVideoStreams((current) =>
+      syncRemotePlaybackStreams(
+        current,
+        lastRemoteVideoTracksRef.current,
+        lastRemoteAudioTracksRef.current,
+        primaryRemoteVideoId,
+      ),
+    );
+  }, [primaryRemoteVideoId]);
+
+  useEffect(() => {
+    const mediaSession = typeof navigator !== "undefined" ? navigator.mediaSession : undefined;
+    if (!mediaSession) return;
+    if (browserRemoteState.stage !== "connected") {
+      mediaSession.playbackState = "none";
+      return;
+    }
+    try {
+      mediaSession.metadata = new MediaMetadata({
+        title: selectedDevice?.alias || "远控桌面",
+        artist: "uurc-web",
+        album: "Tesla remote",
+      });
+    } catch {
+      // MediaMetadata 在部分车机 Chromium 上可能不可用。
+    }
+    mediaSession.playbackState = remoteAudioMuted ? "paused" : "playing";
+  }, [browserRemoteState.stage, remoteAudioMuted, selectedDevice?.alias]);
 
   useEffect(() => {
     void loadStatus();
@@ -632,11 +726,13 @@ export function useRemoteControlController() {
   }
 
   function resetBrowserRemoteSession() {
-    dispatchGestureCommands(gestureRecognizer.current.reset());
+    resetGestureSession();
     const closedState = browserRemoteSession.current?.close();
     browserRemoteSession.current = null;
     setInputControlEnabled(false);
     setRemoteVideoStreams([]);
+    lastRemoteVideoTracksRef.current = [];
+    lastRemoteAudioTracksRef.current = [];
     setRemoteVideoSamplesById({});
     setBrowserRemoteState(closedState ?? createIdleBrowserRemoteState());
   }
@@ -654,6 +750,7 @@ export function useRemoteControlController() {
       },
       onRemoteStream: handleRemoteMediaStream,
       onRemoteClipboard: handleRemoteClipboard,
+      onPlaybackResume: retryRemoteAudioPlayback,
       onStateChange: setBrowserRemoteState,
     });
     browserRemoteSession.current = session;
@@ -665,6 +762,7 @@ export function useRemoteControlController() {
       appDataBase64: buildDefaultStreamerConnectOptionsBase64({
         deviceId: authStatus.deviceId,
         controlConnectType,
+        ...STREAM_QUALITY_PROFILES[streamQualityRef.current],
       }),
       streamerData: buildStreamerControlStreamerDataJson({ controlId: appControlId }),
       forceRelay: options.forceRelay ?? (connectionRouteMode === "relay" ? true : undefined),
@@ -727,8 +825,8 @@ export function useRemoteControlController() {
       return;
     }
     if (!roomJoinedForSelectedDevice || roomRequiresTakeover || signalGatewayState === "error") {
-      // 自己上一个会话占用时直接接管（force），无需用户再点一次；他人占用仍保留显式两步。
-      const joinWithForce = roomRequiresTakeover || occupiedBySelfClient ? true : forceJoin;
+      // 默认接管；设置里仍可改回普通加入。新页面默认 force，踢掉上一处控制。
+      const joinWithForce = forceJoin;
       const nextContext = await joinRoomForDevice(selectedDeviceId, joinWithForce);
       if (!nextContext || (nextContext.occupiedAtJoin && !nextContext.forceJoin)) return;
       const status = await handleStartSignalGateway(nextContext);
@@ -759,15 +857,23 @@ export function useRemoteControlController() {
     }
   }
 
+  function retryRemoteAudioPlayback() {
+    setRemoteAudioPlayNonce((current) => current + 1);
+  }
+
   function handleRemoteMediaStream(stream: MediaStream) {
-    const tracks = typeof stream.getVideoTracks === "function" ? stream.getVideoTracks() : [];
-    setRemoteVideoStreams(
-      tracks.map((track, index) => ({
-        id: track.id || `video-${index + 1}`,
-        stream: createSingleTrackMediaStream(track),
-      })),
+    const videoTracks = typeof stream.getVideoTracks === "function" ? stream.getVideoTracks() : [];
+    const audioTracks = typeof stream.getAudioTracks === "function" ? stream.getAudioTracks() : [];
+    const previousAudioIds = lastRemoteAudioTracksRef.current.map((track) => track.id).join("|");
+    lastRemoteVideoTracksRef.current = videoTracks;
+    lastRemoteAudioTracksRef.current = audioTracks;
+    setRemoteVideoStreams((current) =>
+      syncRemotePlaybackStreams(current, videoTracks, audioTracks, primaryRemoteVideoIdRef.current),
     );
-    setRemoteVideoSamplesById({});
+    const nextAudioIds = audioTracks.map((track) => track.id).join("|");
+    if (nextAudioIds && nextAudioIds !== previousAudioIds) {
+      retryRemoteAudioPlayback();
+    }
   }
 
   const handleRemoteVideoSample = useCallback((videoId: string, sample: BrowserRemoteVideoElementSample) => {
@@ -855,6 +961,7 @@ export function useRemoteControlController() {
   }
 
   function dispatchStagePointer(kind: "down" | "move" | "up" | "cancel", event: PointerEvent<HTMLDivElement>) {
+    lastStagePointerEventRef.current = event;
     const sample = toPointerSample(event);
     const commands =
       kind === "down"
@@ -865,17 +972,25 @@ export function useRemoteControlController() {
             ? gestureRecognizer.current.pointerUp(sample)
             : gestureRecognizer.current.pointerCancel(sample);
     dispatchGestureCommands(commands, event);
-    writeGestureProbe(event.currentTarget, gestureRecognizer.current.snapshot());
+    const snapshot = gestureRecognizer.current.snapshot();
+    if (kind === "down" && (snapshot.mode === "pending" || snapshot.mode === "mouse")) scheduleClassifyTick();
+    else if (snapshot.mode !== "pending" && snapshot.mode !== "mouse") clearClassifyTimer();
+    writeGestureProbe(event.currentTarget, snapshot);
   }
 
   function dispatchGestureCommands(commands: readonly GestureCommand[], event?: PointerEvent<HTMLDivElement>) {
     const session = browserRemoteSession.current;
     if (!session || commands.length === 0) return;
+    const positionEvent = event ?? lastStagePointerEventRef.current;
     try {
       for (const command of commands) {
         if (command.type === "mouseMove") {
-          if (!event) continue;
-          session.sendMouseMove(toRemoteMousePosition(event));
+          if (!positionEvent) continue;
+          const position = toRemoteMousePosition(positionEvent, {
+            fit: remoteStageViewModeRef.current === "fill" ? "cover" : "contain",
+          });
+          trackpadCursorRef.current = { x: position.absX, y: position.absY, ready: true };
+          session.sendMouseMove(position);
           continue;
         }
         if (command.type === "mousePress") {
@@ -892,8 +1007,11 @@ export function useRemoteControlController() {
         }
         if (command.type === "zoom") {
           session.sendKeyboardInput({ action: "keyboardPress", value: MAC_CONTROL_LEFT_KEY });
-          session.sendMouseScroll({ deltaX: 0, deltaY: command.deltaY });
-          session.sendKeyboardInput({ action: "keyboardRelease", value: MAC_CONTROL_LEFT_KEY });
+          try {
+            session.sendMouseScroll({ deltaX: 0, deltaY: command.deltaY });
+          } finally {
+            session.sendKeyboardInput({ action: "keyboardRelease", value: MAC_CONTROL_LEFT_KEY });
+          }
           continue;
         }
         sendRemoteShortcut(session, command.id);
@@ -903,18 +1021,199 @@ export function useRemoteControlController() {
     }
   }
 
+  function clearClassifyTimer() {
+    if (classifyTimerRef.current === null) return;
+    window.clearTimeout(classifyTimerRef.current);
+    classifyTimerRef.current = null;
+  }
+
+  function scheduleClassifyTick() {
+    clearClassifyTimer();
+    const snapshot = gestureRecognizer.current.snapshot();
+    const delay =
+      snapshot.mode === "mouse" ? GESTURE_THRESHOLDS.LONG_PRESS_MS : GESTURE_THRESHOLDS.CLASSIFY_MS;
+    classifyTimerRef.current = window.setTimeout(() => {
+      classifyTimerRef.current = null;
+      dispatchGestureCommands(gestureRecognizer.current.tick());
+    }, delay);
+  }
+
+  function resetGestureSession() {
+    clearClassifyTimer();
+    dispatchGestureCommands(gestureRecognizer.current.reset());
+    lastStagePointerEventRef.current = null;
+  }
+
   function handleToggleInputControl() {
     if (inputControlActive) {
-      dispatchGestureCommands(gestureRecognizer.current.reset());
+      resetGestureSession();
       setInputControlEnabled(false);
       return;
     }
     if (controlChannelState !== "open") return;
     setInputControlEnabled(true);
+    retryRemoteAudioPlayback();
     remoteStageRef.current?.focus();
   }
 
+  function handleToggleRemoteAudio() {
+    setRemoteAudioMuted((current) => !current);
+    retryRemoteAudioPlayback();
+  }
+
+  const handleRemoteAudioBlocked = useCallback(() => {
+    if (remoteAudioBlockedToastShownRef.current) return;
+    remoteAudioBlockedToastShownRef.current = true;
+    toastIdRef.current += 1;
+    setToast({
+      id: toastIdRef.current,
+      message: "车机拦截了自动播放，点一下画面或「声音」再试；行驶中可能完全禁网页出声",
+    });
+  }, []);
+
+  function handleToggleOnScreenKeyboard() {
+    if (!inputControlActive) return;
+    setOnScreenKeyboardOpen((open) => {
+      if (open) browserRemoteSession.current?.releaseAllInputs();
+      return !open;
+    });
+  }
+
+  function handleOskKeyboardInput(input: { action: "keyboardPress" | "keyboardRelease"; value: string | number }) {
+    if (!inputControlActive || !browserRemoteSession.current) return;
+    browserRemoteSession.current.sendKeyboardInput(input);
+  }
+
+  function handleToggleVoice() {
+    if (!inputControlActive) return;
+    void (async () => {
+      const perm = await queryMicrophonePermission();
+      if (perm === "denied") {
+        setVoiceStatus("error");
+        setVoiceDetail(MICROPHONE_DENIED_HINT);
+        showToast(MICROPHONE_DENIED_HINT);
+        return;
+      }
+      voiceInputRef.current?.toggle();
+    })();
+  }
+
+  async function handleToggleInputBridge() {
+    if (!inputControlActive) {
+      showToast("请先点「控制中」再配对手机");
+      return;
+    }
+    if (inputBridgePanelOpen) {
+      setInputBridgePanelOpen(false);
+      return;
+    }
+    try {
+      const session = await ensureInputBridge();
+      trackpadCursorRef.current = { x: 0, y: 0, ready: false };
+      setInputBridgeId(session.id || ACTIVE_BRIDGE_ID);
+      setInputBridgeUrl(buildPairLandingUrl());
+      setInputBridgeStatus("手机打开配对页即可，无需输入配对码。");
+      setInputBridgePanelOpen(true);
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : "无法创建手机配对");
+    }
+  }
+
+  function handleRevealCua(): void {
+    const drawer = document.getElementById("remote-cua-drawer");
+    if (drawer instanceof HTMLDetailsElement) drawer.open = true;
+    drawer?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  async function handleSubmitCua(): Promise<void> {
+    const text = cuaDraft.trim();
+    if (!text || !inputControlActive) return;
+    const intent = mapCuaIntent(text);
+    if (intent.kind === "unknown") {
+      setCuaStatus(describeCuaIntent(intent));
+      return;
+    }
+    try {
+      const session = await ensureInputBridge();
+      const id = session.id || ACTIVE_BRIDGE_ID;
+      setInputBridgeId(id);
+      setInputBridgeUrl(buildPairLandingUrl());
+      if (intent.kind === "launch" || intent.kind === "activate") {
+        await pushInputBridgeEvents(id, [{ type: "cua", text, intent }]);
+      } else if (intent.kind === "shortcut") {
+        await pushInputBridgeEvents(id, [{ type: "shortcut", id: intent.id }]);
+      } else {
+        await pushInputBridgeEvents(id, [{ type: "text", text: intent.text }]);
+      }
+      setCuaDraft("");
+      setCuaStatus(`已发送：${describeCuaIntent(intent)}`);
+      setCuaResults((current) => [
+        { id: `${Date.now()}`, text, ok: true, detail: describeCuaIntent(intent), at: Date.now() },
+        ...current,
+      ].slice(0, 20));
+    } catch (caught) {
+      setCuaStatus(caught instanceof Error ? caught.message : "CUA 发送失败");
+    }
+  }
+
+  function applyInputBridgeEvents(events: InputBridgeEvent[]): void {
+    const session = browserRemoteSession.current;
+    if (!session || events.length === 0) return;
+    const surface = readRemoteSurfaceSize(remoteStageRef.current);
+    if (!trackpadCursorRef.current.ready) {
+      trackpadCursorRef.current = { ...createCenteredCursor(surface), ready: true };
+    }
+    for (const event of events) {
+      if (isAgentBridgeEvent(event)) continue;
+      if (event.type === "text") {
+        session.sendTextInput(event.text);
+        setInputBridgeStatus(`已写入 ${event.text.length} 字`);
+        showToast(`手机已发送 ${event.text.length} 字`);
+        continue;
+      }
+      if (event.type === "move") {
+        const next = applyTrackpadMove(trackpadCursorRef.current, event.dx, event.dy, surface);
+        trackpadCursorRef.current = { ...next, ready: true };
+        session.sendMouseMove({
+          absX: Math.round(next.x),
+          absY: Math.round(next.y),
+          surfaceWidth: surface.width,
+          surfaceHeight: surface.height,
+        });
+        setInputBridgeStatus("触控板移动中");
+        continue;
+      }
+      if (event.type === "click") {
+        session.sendMouseButton({ action: "mousePress", button: event.button });
+        session.sendMouseButton({ action: "mouseRelease", button: event.button });
+        setInputBridgeStatus(event.button === "secondary" ? "已点右键" : "已点左键");
+        continue;
+      }
+      if (event.type === "scroll") {
+        session.sendMouseScroll({
+          deltaX: event.deltaX * TRACKPAD_SCROLL_GAIN,
+          deltaY: event.deltaY * TRACKPAD_SCROLL_GAIN,
+        });
+        setInputBridgeStatus("触控板滚动中");
+        continue;
+      }
+      if (event.type === "shortcut") {
+        sendRemoteShortcut(session, event.id);
+        setInputBridgeStatus(`已发送 ${event.id}`);
+      }
+    }
+  }
+
+  function handleCycleStreamQuality(): void {
+    const next = cycleStreamQuality(streamQualityRef.current);
+    streamQualityRef.current = next;
+    setStreamQuality(next);
+    showToast(`画质已切到${STREAM_QUALITY_PROFILES[next].label}，正在重连`);
+    void handleReconnectRemote();
+  }
+
   function handleRemoteStagePointerDown(event: PointerEvent<HTMLDivElement>) {
+    retryRemoteAudioPlayback();
     if (!inputControlActive || !browserRemoteSession.current) return;
     event.preventDefault();
     event.currentTarget.focus();
@@ -941,6 +1240,9 @@ export function useRemoteControlController() {
 
   function handleRemoteStagePointerCancel(event: PointerEvent<HTMLDivElement>) {
     if (!inputControlActive || !browserRemoteSession.current) return;
+    if (typeof event.currentTarget.releasePointerCapture === "function" && event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
     dispatchStagePointer("cancel", event);
   }
 
@@ -1000,7 +1302,7 @@ export function useRemoteControlController() {
   function handleRemoteStageBlur() {
     // 失焦时把按住的键鼠全部抬起：Alt+Tab、右键菜单、系统快捷键会吞掉 keyup/pointerup，
     // 否则会在被控端留下卡住的按键（右键卡死、Alt 卡死等）。
-    dispatchGestureCommands(gestureRecognizer.current.reset());
+    resetGestureSession();
     browserRemoteSession.current?.releaseAllInputs();
   }
 
@@ -1079,6 +1381,7 @@ export function useRemoteControlController() {
   const browserIceServers = browserRemoteState.controlResult?.iceServers.length ?? 0;
   const connectionPathLabel = formatConnectionPath(browserRemoteState.connectionPath);
   const inboundVideoStatsLabel = formatInboundVideoStats(browserRemoteState.inboundVideo);
+  const inboundAudioStatsLabel = formatInboundAudioStats(browserRemoteState.inboundAudio);
   const videoFlowLabel = formatVideoFlow(browserRemoteState);
   const videoElementLabel = formatVideoElement(browserRemoteState.videoElement);
   const textChannelState = browserRemoteState.dataChannels[STREAMER_DATA_CHANNEL_LABELS.text] ?? "closed";
@@ -1120,6 +1423,34 @@ export function useRemoteControlController() {
     textChannelState,
     connectionPathLabel,
   });
+
+  useEffect(() => {
+    if (browserRemoteState.stage !== "connected") {
+      qualityStallSinceRef.current = 0;
+      return;
+    }
+    const poor = connectionQuality.state === "bad" || connectionQuality.state === "warn";
+    if (!poor) {
+      qualityStallSinceRef.current = 0;
+      return;
+    }
+    if (!qualityStallSinceRef.current) qualityStallSinceRef.current = Date.now();
+    const timer = window.setTimeout(() => {
+      if (qualityDowngradeBusyRef.current) return;
+      const next = nextLowerStreamQuality(streamQualityRef.current);
+      if (!next) return;
+      qualityDowngradeBusyRef.current = true;
+      streamQualityRef.current = next;
+      setStreamQuality(next);
+      showToast(`网络较差，已降到${STREAM_QUALITY_PROFILES[next].label}画质`);
+      void handleReconnectRemote().finally(() => {
+        qualityDowngradeBusyRef.current = false;
+        qualityStallSinceRef.current = 0;
+      });
+    }, 8000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只跟质量状态走，避免重连函数身份变化打断计时
+  }, [browserRemoteState.stage, connectionQuality.state]);
 
   useEffect(() => {
     // 累计连续“解码停滞”采样数：要求持续 ≥2 次才触发自动恢复，避免偶发解码抖动误重连。
@@ -1260,7 +1591,6 @@ export function useRemoteControlController() {
       !loggedIn ||
       !selectedDeviceId ||
       selectedDeviceIsCurrentAuthDevice ||
-      occupiedByOthers ||
       busy !== null ||
       browserRemoteState.stage !== "idle" ||
       signalGatewayState === "connected" ||
@@ -1271,8 +1601,7 @@ export function useRemoteControlController() {
     ) {
       return;
     }
-    // 进入设备控制页后自动发起一次连接：他人占用已被 occupiedByOthers 排除；
-    // 若仅被自己上一个会话占用，handleNextAction 会自动接管（force join）。
+    // 进入设备控制页后自动发起一次连接；已占用则 force 接管，以本页为准。
     autoConnectAttemptedDeviceRef.current = selectedDeviceId;
     void handleNextAction();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleNextAction 每次渲染重建，不入依赖；用 ref 保证每台设备只自动连一次
@@ -1282,7 +1611,6 @@ export function useRemoteControlController() {
     loggedIn,
     selectedDeviceId,
     selectedDeviceIsCurrentAuthDevice,
-    occupiedByOthers,
     devicesLoaded,
     selectedDevice,
     remoteAssistanceActive,
@@ -1292,7 +1620,10 @@ export function useRemoteControlController() {
   ]);
 
   useEffect(() => {
-    const releaseHeldInputs = () => browserRemoteSession.current?.releaseAllInputs();
+    const releaseHeldInputs = () => {
+      resetGestureSession();
+      browserRemoteSession.current?.releaseAllInputs();
+    };
     const onVisibilityChange = () => {
       if (document.hidden) releaseHeldInputs();
     };
@@ -1309,7 +1640,110 @@ export function useRemoteControlController() {
     if (inputControlActive) return;
     const stage = remoteStageRef.current;
     stage?.querySelector("[data-gesture-probe]")?.remove();
+    setOnScreenKeyboardOpen(false);
+    voiceInputRef.current?.stop();
   }, [inputControlActive]);
+
+  useEffect(() => {
+    const voice = createCarVoiceInput({
+      lang: "zh-CN",
+      onTranscript: (text) => {
+        try {
+          browserRemoteSession.current?.sendTextInput(text);
+          showToast(`已听写 ${text.length} 字`);
+        } catch (caught) {
+          setError(toFriendlyError(caught instanceof Error ? caught.message : String(caught)));
+        }
+      },
+      onStatus: (status, detail) => {
+        setVoiceStatus(status);
+        setVoiceDetail(detail ?? "");
+        if (status === "error") showToast(`车机听写失败：${detail ?? "unknown"}`);
+        if (status === "unsupported") showToast("此浏览器没有 Web Speech，请用手机输入");
+      },
+    });
+    voiceInputRef.current = voice;
+    if (!voice.supported) setVoiceStatus("unsupported");
+    return () => voice.stop();
+  }, []);
+
+  useEffect(() => {
+    if (!inputControlActive) return;
+    let cancelled = false;
+    void ensureInputBridge()
+      .then((session) => {
+        if (cancelled) return;
+        setInputBridgeId(session.id || ACTIVE_BRIDGE_ID);
+        setInputBridgeUrl(buildPairLandingUrl());
+        setInputBridgeStatus((current) => current || "手机打开配对页即可，无需输入配对码。");
+      })
+      .catch(() => {
+        if (!cancelled) setInputBridgeStatus("配对通道未就绪");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [inputControlActive]);
+
+  useEffect(() => {
+    if (!inputBridgeId || !inputControlActive) return;
+    const abort = new AbortController();
+    let stopped = false;
+    const loop = async () => {
+      while (!stopped) {
+        try {
+          const result = await pullInputBridgeNext(inputBridgeId, 20000, abort.signal);
+          if (stopped) return;
+          applyInputBridgeEvents(result.events);
+        } catch (caught) {
+          if (stopped || abort.signal.aborted) return;
+          setInputBridgeStatus(caught instanceof Error ? caught.message : "等待手机超时，正在重试");
+          await new Promise((resolve) => setTimeout(resolve, 800));
+        }
+      }
+    };
+    void loop();
+    return () => {
+      stopped = true;
+      abort.abort();
+    };
+  }, [inputBridgeId, inputControlActive]);
+
+  useEffect(() => {
+    if (!inputBridgeId || !inputControlActive) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const peek = await peekInputBridge(inputBridgeId);
+        if (cancelled) return;
+        setCuaAgentOnline(peek.agentOnline);
+        setCuaFrontmost(peek.frontmost);
+        if (peek.cuaResults.length > 0) setCuaResults(peek.cuaResults);
+      } catch {
+        if (!cancelled) setCuaAgentOnline(false);
+      }
+    };
+    void tick();
+    const timer = window.setInterval(() => {
+      void tick();
+    }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [inputBridgeId, inputControlActive]);
+
+  useEffect(() => {
+    if (inputControlActive || !inputBridgeId) return;
+    const id = inputBridgeId;
+    setInputBridgeId("");
+    setInputBridgePanelOpen(false);
+    setInputBridgeUrl("");
+    setInputBridgeStatus("");
+    setCuaAgentOnline(false);
+    setCuaFrontmost("");
+    void deleteInputBridge(id);
+  }, [inputControlActive, inputBridgeId]);
 
   useEffect(() => {
     const stage = remoteStageRef.current;
@@ -1347,8 +1781,8 @@ export function useRemoteControlController() {
         ? "正在加载画面…"
         : signalGatewayState === "connected" || busy === "signal-start" || busy === "browser-remote-start"
           ? "连接中…"
-          : occupiedByOthers && !forceJoin
-            ? "设备被占用，点「接管并开始连接」"
+          : selectedDeviceOccupied
+            ? "设备已被占用，正在自动接管…"
             : roomResponse || remoteBootstrap
               ? "已就绪，点「开始连接」"
               : "未连接";
@@ -1431,6 +1865,7 @@ export function useRemoteControlController() {
     forceJoin,
     hasRemoteVideo,
     iceControlStatusLabel,
+    inboundAudioStatsLabel,
     inboundVideoStatsLabel,
     inputControlActive,
     inputControlLabel,
@@ -1511,7 +1946,35 @@ export function useRemoteControlController() {
     onStopSignalGateway: () => void handleStopSignalGateway(),
     onSendClipboardText: handleSendClipboardText,
     onToggleInputControl: handleToggleInputControl,
+    remoteAudioMuted,
+    remoteAudioPlayNonce,
     onToggleFullscreen: handleToggleFullscreen,
+    onToggleRemoteAudio: handleToggleRemoteAudio,
+    onRemoteAudioBlocked: handleRemoteAudioBlocked,
+    inputBridgeId,
+    inputBridgePanelOpen,
+    inputBridgeUrl,
+    inputBridgeStatus,
+    cuaDraft,
+    cuaPreview,
+    cuaStatus,
+    cuaFrontmost,
+    cuaAgentOnline,
+    cuaResults,
+    streamQuality,
+    streamQualityLabel: STREAM_QUALITY_PROFILES[streamQuality].label,
+    inputProbeEnabled: isInputProbeEnabled(),
+    onScreenKeyboardOpen,
+    voiceDetail,
+    voiceStatus,
+    onToggleOnScreenKeyboard: handleToggleOnScreenKeyboard,
+    onToggleVoice: handleToggleVoice,
+    onToggleInputBridge: () => void handleToggleInputBridge(),
+    onCuaDraftChange: setCuaDraft,
+    onSubmitCua: () => void handleSubmitCua(),
+    onRevealCua: handleRevealCua,
+    onCycleStreamQuality: handleCycleStreamQuality,
+    onOskKeyboardInput: handleOskKeyboardInput,
   };
 
   return {
@@ -1540,6 +2003,16 @@ function isGestureProbeEnabled(): boolean {
   try {
     if (new URLSearchParams(window.location.search).get("gestureProbe") === "1") return true;
     return window.localStorage.getItem("uurcGestureProbe") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function isInputProbeEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (new URLSearchParams(window.location.search).get("inputProbe") === "1") return true;
+    return window.localStorage.getItem("uurcInputProbe") === "1";
   } catch {
     return false;
   }

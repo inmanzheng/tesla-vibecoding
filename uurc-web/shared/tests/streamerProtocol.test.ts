@@ -875,7 +875,14 @@ describe("streamer protocol constants", () => {
       0x5a, 0x0e, 0x08, 0x02, 0x10, 0x01, 0x18, 0x02, 0x20, 0x02, 0x30, 0x02, 0x38, 0x02, 0x40, 0x03,
       0x62, 0x06, 0x34, 0x2e, 0x32, 0x33, 0x2e, 0x30,
     ]);
-    expect(buildDefaultStreamerConnectOptionsBase64({ deviceId: "web-device-1" })).toBe(
+    expect(buildDefaultStreamerConnectOptionsBase64({
+      deviceId: "web-device-1",
+      fps: STREAMER_FPS_VALUES.FPS_60,
+      videoQuality: STREAMER_VIDEO_QUALITY_VALUES.VideoQuality_HD,
+      decoderWidth: 3840,
+      decoderHeight: 2160,
+      decoderFps: 60,
+    })).toBe(
       "CAEQ////////////ARoQCAIQAxgBIAEqBgiADxC4CCIMCDwQARiAHiDwECgBMggIgA8QuAgYPEACSgx3ZWItZGV2aWNlLTFQAVoOCAIQARgCIAIwAjgCQANiBjQuMjMuMA==",
     );
     expect(
@@ -884,7 +891,7 @@ describe("streamer protocol constants", () => {
         controlConnectType: STREAMER_CONTROL_CONNECT_TYPES.ControlConnectType_Assistance,
       }),
     ).toBe(
-      "CAEQ////////////ARoQCAIQAxgBIAEqBgiADxC4CCIMCDwQARiAHiDwECgBMggIgA8QuAgYPEACSgx3ZWItZGV2aWNlLTFQAloOCAIQARgCIAIwAjgCQANiBjQuMjMuMA==",
+      "CAEQ////////////ARoQCAEQAhgBIAEqBgiADxC4CCIMCB4QARiADyC4CCgBMggIgA8QuAgYPEACSgx3ZWItZGV2aWNlLTFQAloOCAIQARgCIAIwAjgCQANiBjQuMjMuMA==",
     );
   });
 

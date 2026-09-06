@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 
 import { DeviceListPage } from "./components/DeviceListPage.js";
 import { LoginPage } from "./components/LoginPage.js";
+import { PhoneInputBridgePage, PhonePairLandingPage } from "./components/PhoneInputBridgePage.js";
 import { RemoteControlPage } from "./components/RemoteControlPage.js";
 import { Toast } from "./components/Toast.js";
 import { useRemoteControlController } from "./controllers/useRemoteControlController.js";
@@ -17,8 +18,18 @@ export default function App() {
 }
 
 function AppRoutes() {
+  const location = useLocation();
   const controller = useRemoteControlController();
   const loginPage = <LoginPage {...controller.loginPageProps} />;
+
+  if (location.pathname === "/pair" || location.pathname.startsWith("/pair/")) {
+    return (
+      <Routes>
+        <Route path="/pair" element={<PhonePairLandingPage />} />
+        <Route path="/pair/:id" element={<PhoneInputBridgePage />} />
+      </Routes>
+    );
+  }
 
   let content: ReactNode;
   if (controller.authLoading) {

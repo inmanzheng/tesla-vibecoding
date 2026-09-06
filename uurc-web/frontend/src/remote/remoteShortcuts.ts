@@ -1,4 +1,5 @@
 export type RemoteShortcut =
+  | "enter"
   | "escape"
   | "windows-ctrl-alt-del"
   | "windows-alt-tab"
@@ -11,6 +12,9 @@ export type RemoteShortcut =
   | "mac-force-quit"
   | "mac-cmd-q"
   | "mac-cmd-w"
+  | "mac-cmd-c"
+  | "mac-cmd-v"
+  | "mac-cmd-z"
   | "mac-hide-app"
   | "mac-mission-control"
   | "mac-prev-desktop"
@@ -48,7 +52,11 @@ const KEY = {
   shiftLeft: 59,
   space: 62,
   tab: 61,
+  enter: 66,
   w: 51,
+  c: 31,
+  v: 50,
+  z: 54,
   d: 32,
   h: 36,
   l: 40,
@@ -81,6 +89,9 @@ export const REMOTE_SHORTCUT_GROUPS: RemoteShortcutGroup[] = [
       { id: "mac-force-quit", label: "Cmd Opt Esc", keys: [KEY.metaLeft, KEY.altLeft, KEY.escape] },
       { id: "mac-cmd-q", label: "Cmd Q", keys: [KEY.metaLeft, KEY.q] },
       { id: "mac-cmd-w", label: "Cmd W", keys: [KEY.metaLeft, KEY.w] },
+      { id: "mac-cmd-c", label: "复制", keys: [KEY.metaLeft, KEY.c] },
+      { id: "mac-cmd-v", label: "粘贴", keys: [KEY.metaLeft, KEY.v] },
+      { id: "mac-cmd-z", label: "撤销", keys: [KEY.metaLeft, KEY.z] },
       { id: "mac-hide-app", label: "Cmd H", keys: [KEY.metaLeft, KEY.h] },
       { id: "mac-mission-control", label: "调度中心", keys: [KEY.controlLeft, KEY.arrowUp] },
       { id: "mac-prev-desktop", label: "上一桌面", keys: [KEY.controlLeft, KEY.arrowLeft] },
@@ -95,7 +106,10 @@ export const REMOTE_SHORTCUT_GROUPS: RemoteShortcutGroup[] = [
   },
   {
     title: "通用",
-    shortcuts: [{ id: "escape", label: "Esc", keys: [KEY.escape] }],
+    shortcuts: [
+      { id: "enter", label: "发送", keys: [KEY.enter] },
+      { id: "escape", label: "取消", keys: [KEY.escape] },
+    ],
   },
 ];
 

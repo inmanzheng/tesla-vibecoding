@@ -7,6 +7,7 @@ import { createRuntimeProfile } from "@uurc/shared";
 import { createConfig, type BackendConfigOverrides } from "./config.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { createDiagnosticsRouter } from "./routes/diagnostics.js";
+import { createInputBridgeRouter } from "./routes/inputBridge.js";
 import { createProxyRouter } from "./routes/proxy.js";
 import { createRemoteRouter } from "./routes/remote.js";
 import { RemoteControlService, type SignalGatewayConnector } from "./services/remoteControlService.js";
@@ -21,6 +22,12 @@ export function createApp(overrides: AppOverrides = {}) {
   const remoteControl = new RemoteControlService(undefined, signalGatewayConnector);
   const app = express();
 
+  app.use((_req, res, next) => {
+    res.setHeader("Permissions-Policy", "microphone=(self)");
+    res.setHeader("Feature-Policy", "microphone 'self'");
+    next();
+  });
+
   app.use(express.json({ limit: "10mb" }));
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, runtime: "node" });
@@ -30,6 +37,7 @@ export function createApp(overrides: AppOverrides = {}) {
   });
 
   app.use("/api", createRemoteRouter(remoteControl));
+  app.use("/api", createInputBridgeRouter());
   app.use("/api", createProxyRouter());
 
   if (config.enableDiagnostics) {

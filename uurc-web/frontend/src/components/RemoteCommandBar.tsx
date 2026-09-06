@@ -2,12 +2,18 @@ import {
   AlertTriangle,
   Eye,
   GripHorizontal,
+  Keyboard,
   LoaderCircle,
   Maximize2,
+  Mic,
   MousePointerClick,
   PlugZap,
   RotateCcw,
   Scan,
+  Smartphone,
+  Sparkles,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 
 import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
@@ -27,6 +33,17 @@ export function RemoteCommandBar({
   onStageViewModeChange,
   onToggleInputControl,
   onToggleFullscreen,
+  onToggleRemoteAudio,
+  remoteAudioMuted,
+  onToggleOnScreenKeyboard,
+  onToggleVoice,
+  onToggleInputBridge,
+  onRevealCua,
+  onCycleStreamQuality,
+  streamQualityLabel,
+  onScreenKeyboardOpen,
+  voiceStatus,
+  inputBridgePanelOpen,
   remoteRecoveryLabel,
   remoteShortcutPlatform,
   remoteStageViewMode,
@@ -44,6 +61,17 @@ export function RemoteCommandBar({
   | "onStageViewModeChange"
   | "onToggleInputControl"
   | "onToggleFullscreen"
+  | "onToggleRemoteAudio"
+  | "remoteAudioMuted"
+  | "onToggleOnScreenKeyboard"
+  | "onToggleVoice"
+  | "onToggleInputBridge"
+  | "onRevealCua"
+  | "onCycleStreamQuality"
+  | "streamQualityLabel"
+  | "onScreenKeyboardOpen"
+  | "voiceStatus"
+  | "inputBridgePanelOpen"
   | "remoteRecoveryLabel"
   | "remoteShortcutPlatform"
   | "remoteStageViewMode"
@@ -113,7 +141,50 @@ export function RemoteCommandBar({
           <Maximize2 size={17} />
           {isFullscreen ? "退出全屏" : "全屏"}
         </button>
+        <button type="button" disabled={!connected} onClick={onCycleStreamQuality}>
+          画质 {streamQualityLabel}
+        </button>
+        <button
+          type="button"
+          className={remoteAudioMuted ? "" : "is-active"}
+          disabled={!connected}
+          onClick={onToggleRemoteAudio}
+        >
+          {remoteAudioMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+          {remoteAudioMuted ? "声音" : "静音"}
+        </button>
         <RemoteShortcutMenu disabled={!inputControlActive} platformKey={remoteShortcutPlatform} onRemoteShortcut={onRemoteShortcut} />
+        <button
+          type="button"
+          className={onScreenKeyboardOpen ? "is-active" : ""}
+          disabled={!inputControlActive}
+          onClick={onToggleOnScreenKeyboard}
+        >
+          <Keyboard size={17} />
+          键盘
+        </button>
+        <button
+          type="button"
+          className={voiceStatus === "listening" ? "is-active" : ""}
+          disabled={!inputControlActive || voiceStatus === "unsupported"}
+          onClick={onToggleVoice}
+        >
+          <Mic size={17} />
+          {voiceStatus === "listening" ? "听写中" : "车机麦"}
+        </button>
+        <button
+          type="button"
+          className={inputBridgePanelOpen ? "is-active" : ""}
+          disabled={!inputControlActive}
+          onClick={onToggleInputBridge}
+        >
+          <Smartphone size={17} />
+          手机输入
+        </button>
+        <button type="button" disabled={!inputControlActive} onClick={onRevealCua}>
+          <Sparkles size={17} />
+          CUA
+        </button>
       </div>
     </section>
   );
